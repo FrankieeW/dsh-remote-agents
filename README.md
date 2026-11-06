@@ -1,10 +1,10 @@
 # DSH Remote Agents
 
-> **Stable channel: 0.4.0.** Supports DSH 0.2.2-rc.1 and the CLI compatibility ranges below. Restart the desktop application after upgrading so its host and interface use the same plugin version.
+> **Stable channel: 0.4.1.** Supports DSH 0.2.2-rc.1 and the CLI compatibility ranges below. Restart the desktop application after upgrading so its host and interface use the same plugin version.
 
 ## Install
 
-Use `dsh-remote-agents@latest` in the plugin manager for your running DSH profile, or pin `dsh-remote-agents@0.4.0`. For an explicitly selected `web` profile:
+Use `dsh-remote-agents@latest` in the plugin manager for your running DSH profile, or pin `dsh-remote-agents@0.4.1`. For an explicitly selected `web` profile:
 
 ```sh
 dsh plugin --profile web add dsh-remote-agents@latest
@@ -14,7 +14,13 @@ For the desktop app, install into its existing profile through its plugin manage
 
 An **English-default Workspace interface** with DSH, Claude Code, Codex and OMP sessions in one sidebar and content area, plus local/SSH machine and legacy terminal management. User messages are never translated or rewritten.
 
-## What's new in 0.4.0
+## What's new in 0.4.1
+
+- Fix an OMP conversation black screen caused by phased `todo` records (`op/list` input and `details.phases` output).
+- Show normalized OMP tasks and their current statuses, including result-only updates and empty lists. Unknown/truncated todo formats fall back to structured data.
+- Isolate tool-card rendering failures so one bad card cannot remove the conversation, composer or stop control. Existing affected history can be reopened without deleting it.
+
+## Changes in 0.4.0
 
 - Workspace discovery retries after startup/connection failures, retains known hosts during outages, and offers an explicit refresh. A host/interface version mismatch asks for an application restart.
 - Settings save as partial, revision-checked changes with visible save status and last-turn effective values. Concurrent stale saves fail instead of silently overriding another choice.
@@ -80,14 +86,14 @@ npm pack
 Install the resulting package through the plugin manager of the **same profile as your running GUI**. For an explicitly selected `web` profile:
 
 ```sh
-dsh plugin --profile web add /absolute/path/dsh-remote-agents-0.4.0.tgz
+dsh plugin --profile web add /absolute/path/dsh-remote-agents-0.4.1.tgz
 ```
 
 For the desktop application, use its plugin management entry rather than installing into an unrelated `web` profile. Restart the desktop application after the update; no automatic HMR is promised without a matching `dev:web` watcher.
 
-Install the versioned **0.4.0** tarball for this Workspace revision. Repacking an older tarball at its existing installed path can retain pnpm's old file integrity/cache; a new version and filename avoid that ambiguity.
+Install the versioned **0.4.1** tarball for this Workspace revision. Repacking an older tarball at its existing installed path can retain pnpm's old file integrity/cache; a new version and filename avoid that ambiguity.
 
-The historical [v0.2.0 release](https://github.com/FrankieeW/dsh-remote-agents/releases/tag/v0.2.0) does **not** include unified chat. Build this revision for 0.4.0; an existing public release is not silently replaced.
+The historical [v0.2.0 release](https://github.com/FrankieeW/dsh-remote-agents/releases/tag/v0.2.0) does **not** include unified chat. Build this revision for 0.4.1; an existing public release is not silently replaced.
 
 Build artifacts contain a Host ESM entry and a DSH lazy client factory. React is shared with the Host. The pinned Claude SDK remains an ordinary runtime dependency rather than being embedded into the browser bundle.
 

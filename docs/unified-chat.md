@@ -1,4 +1,4 @@
-# Unified conversations (0.4.0)
+# Unified conversations (0.4.1)
 
 The interface defaults to **English** and uses DSH's semantic light/dark theme, typography and controls. User messages and provider output are never translated or rewritten.
 
@@ -13,6 +13,10 @@ The interface defaults to **English** and uses DSH's semantic light/dark theme, 
 - **Workspace Tree** defaults to nested folders, with each workspace under its nearest registered directory ancestor. Path-segment boundaries keep `/project-other` separate from `/project`. Children keep their own sessions and New controls and appear before their parent's sessions; collapsing a parent hides descendants. Grouping and collapse choices are saved locally. **Workspaces** switches to sibling groups. This changes presentation only, not cwd, host membership or session storage. Metadata search retains ancestor context for matching children.
 - Searching temporarily expands matching branches through collapsed ancestors; clearing the query restores the saved collapse state. Unregistered History groups cannot act as ancestors of registered workspaces.
 - The replacement provides workspace adoption by absolute path, metadata and retained external-message search, external rename/pin/archive/restore and export, history filters, workspace removal, and native rename/fork/pin/archive actions. It does not mirror native single-session-list view, native content search, drag ordering or workspace renaming. The global DSH New Session shortcut still creates a native draft. Machines and legacy terminals remain a separate management entry, not a conversation workbench.
+
+## Tool rendering recovery
+
+Version 0.4.1 accepts OMP phased `todo` input (`op: init`, `list[].items`) and full state returned in `result.details.phases[].tasks`. Returned task statuses take precedence over initialization input. Unknown, incomplete or truncated todo records remain viewable as structured data. Each tool card has a rendering boundary with a raw-data fallback; a card failure does not unmount the conversation or its composer. Existing persisted transcripts require no migration.
 
 ## Supported capabilities
 

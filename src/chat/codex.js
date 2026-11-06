@@ -185,7 +185,7 @@ export function createCodexProvider({ executable = 'codex', execution, spawnFn =
         exited = true; exit.resolve();
         if (!closed) fail(error(`app-server exited (${code ?? sig ?? 'unknown'}; diagnostic bytes ${diagnosticBytes})`));
       });
-      await request('initialize', { clientInfo: { name: 'dsh_remote_agents', title: 'DSH Remote Agents', version: '0.4.0' }, capabilities: null });
+      await request('initialize', { clientInfo: { name: 'dsh_remote_agents', title: 'DSH Remote Agents', version: '0.4.1' }, capabilities: null });
       write({ method: 'initialized', params: {} });
       // Explicit policy overrides prevent a global full-access/never profile silently bypassing this UI.
       let inherited = {};

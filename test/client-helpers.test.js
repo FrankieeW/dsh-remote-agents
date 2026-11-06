@@ -129,3 +129,33 @@ test("Codex keeps terminal output, patches, plans and native resume identity", (
   assert.equal(patch.summary, "a.js");
   assert.deepEqual(describeTool({ name: "update_plan", input: { todos: [{ content: "Verify", status: "in_progress" }] } }).todos, [{ content: "Verify", status: "in_progress" }]);
 });
+
+test('OMP phased todos normalize init input and authoritative result updates', () => {
+  const input = { op: 'init', list: [{ phase: 'Implementation', items: ['Inspect API', 'Build UI'] }] };
+  const details = { op: 'init', phases: [{ name: 'Implementation', tasks: [{ content: 'Inspect API', status: 'in_progress' }, { content: 'Build UI', status: 'pending' }] }] };
+  const before = describeTool({ name: 'todo', input });
+  assert.equal(before.summary, '2 pending');
+  const after = describeTool({ name: 'todo', input, result: { details } });
+  assert.equal(after.summary, '1 in progress · 1 pending');
+  assert.deepEqual(latestTodos([{ tools: [{ name: 'todo', input, result: { details } }] }]), after.todos);
+  const updated = { phases: [{ name: 'Implementation', tasks: [{ content: 'Inspect API', status: 'completed' }] }] };
+  assert.equal(describeTool({ name: 'todo', input: { op: 'update', phase: 0, task: 0, status: 'completed' }, result: { details: updated } }).summary, '1 completed');
+  assert.deepEqual(latestTodos([{ tools: [{ name: 'todo', input, result: { details } }, { name: 'todo', input: { op: 'clear' }, result: { details: { phases: [] } } }] }]), []);
+});
+
+test('unknown, empty, malformed and truncated todo payloads never crash the renderer', () => {
+  for (const name of ['todo', 'TodoWrite', 'update_plan']) for (const input of [undefined, null, {}, { op: 'read' }, { todos: null }, { todos: [null, 42] }, { op: 'init', list: [null, { items: null }] }, 'truncated…']) {
+    assert.doesNotThrow(() => describeTool({ name, input, result: 'truncated result…' }));
+  }
+  assert.equal(todoProgress(null), '');
+  const unknown = describeTool({ name: 'todo', input: { op: 'read' } });
+  assert.equal(unknown.todos, undefined);
+  assert.deepEqual(unknown.input, { op: 'read' });
+});
+
+
+test("malformed and prototype-named todo statuses normalize without coercion", () => {
+  const tool = {name:"todo", input:{todos:[{content:"One",status:{toString:null}},{content:"Two",status:"__proto__"}]}};
+  assert.deepEqual(describeTool(tool).todos.map(item => item.status), ["pending", "pending"]);
+  assert.equal(latestTodos([{tools:[tool]}]).length, 2);
+});

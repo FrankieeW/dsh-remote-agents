@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { TodoList } from "./chat-todos.jsx";
 import { DIFF_LABELS, MARKDOWN_LABELS, TERMINAL_LABELS } from "./native-labels.js";
-import { describeTool, printable } from "./tool-presentation.js";
+import { describeTool, printable, toolTitle } from "./tool-presentation.js";
 import {
   DiffBlock, DisclosureRow, IconApiOutlineRegular, IconBrowseOutlineRegular, IconChecklistOutlineRegular, IconEditOutlineRegular,
   IconGlobeOutlineRegular, IconSearchOutlineRegular, IconSparkleRegular, IconUsersOutlineRegular, MarkdownText, StateDot,
@@ -12,6 +12,20 @@ const ICONS = Object.freeze({
   api: IconApiOutlineRegular, edit: IconEditOutlineRegular, browse: IconBrowseOutlineRegular, search: IconSearchOutlineRegular,
   globe: IconGlobeOutlineRegular, checklist: IconChecklistOutlineRegular, users: IconUsersOutlineRegular, sparkle: IconSparkleRegular,
 });
+
+/** One unfamiliar tool payload must never unmount the conversation/composer. */
+export class ToolRenderBoundary extends React.Component {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    const tool = this.props.tool;
+    return <details className="agent-chat-tool" role="status">
+      <summary>{toolTitle(tool?.name)} · Tool display unavailable — view raw data</summary>
+      <pre>{printable({ input: tool?.input, result: tool?.result, text: tool?.text })}</pre>
+    </details>;
+  }
+}
 
 function IoCard({ input, output, failed }) {
   return <div className="agent-chat-io">
@@ -76,7 +90,7 @@ function AssistantMessage({ message, cwd, streaming }) {
   const tools = message.tools || [];
   if (!tools.length && !message.text && !streaming) return null;
   return <article className="agent-chat-assistant" aria-label="Assistant message">
-    {tools.length > 0 && <div className="agent-chat-tools">{tools.map((tool) => <ToolRow key={tool.id} tool={tool} cwd={cwd} />)}</div>}
+    {tools.length > 0 && <div className="agent-chat-tools">{tools.map((tool) => <ToolRenderBoundary key={tool.id} tool={tool}><ToolRow tool={tool} cwd={cwd} /></ToolRenderBoundary>)}</div>}
     {message.text
       ? <div className="agent-chat-markdown"><MarkdownText text={message.text} streaming={streaming} labels={MARKDOWN_LABELS} /></div>
       : streaming && <TextShimmer active className="agent-chat-working">Working…</TextShimmer>}

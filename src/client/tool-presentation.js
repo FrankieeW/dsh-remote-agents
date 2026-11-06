@@ -88,16 +88,31 @@ function editDiffs(input, path) {
 
 /** Normalized todo items, or null when the input is not a todo list. */
 export function todoItems(input) {
-  if (!isObject(input) || !Array.isArray(input.todos)) return null;
-  const items = input.todos.filter(isObject).map((item) => ({
+  if (!isObject(input)) return null;
+  let entries;
+  if (Array.isArray(input.todos)) entries = input.todos;
+  else if (Array.isArray(input.phases)) entries = input.phases.filter(isObject).flatMap(phase => Array.isArray(phase.tasks) ? phase.tasks : []);
+  else if (input.op === "init" && Array.isArray(input.list)) entries = input.list.filter(isObject).flatMap(phase => Array.isArray(phase.items) ? phase.items : []);
+  else return null;
+  const items = entries.map(item => typeof item === "string" ? { content: item } : item).filter(isObject).map((item) => ({
     content: text(item.content) || text(item.title) || text(item.text) || text(item.activeForm),
-    status: TODO_STATUS[item.status] || "pending",
+    status: Object.hasOwn(TODO_STATUS, text(item.status)) ? TODO_STATUS[text(item.status)] : "pending",
   })).filter((item) => item.content);
-  return items.length ? items : null;
+  return items;
+}
+
+/** OMP result details contain the full list after init/update/read operations. */
+function toolTodos(tool) {
+  if (kindOf(tool?.name) === "todo" && isObject(tool?.result?.details)) {
+    const current = todoItems(tool.result.details);
+    if (current !== null) return current;
+  }
+  return todoItems(tool?.input);
 }
 
 /** DSH's native progress phrasing: "2 completed · 1 in progress · 3 pending". */
 export function todoProgress(todos) {
+  if (!Array.isArray(todos)) return "";
   const done = todos.filter((item) => item.status === "completed").length;
   const active = todos.filter((item) => item.status === "in_progress").length;
   const pending = todos.length - done - active;
@@ -125,10 +140,12 @@ export function describeTool(tool, { cwd } = {}) {
   const input = isObject(tool?.input) ? tool.input : {};
   let kind = kindOf(tool?.name);
   const output = toolResultText(tool?.result) || text(tool?.text);
-  const todos = todoItems(input);
+  const todos = toolTodos(tool);
   if (todos) kind = "todo";
   const base = { kind, icon: ICONS[kind], title: toolTitle(tool?.name), summary: summaryFor(kind, input, cwd), output, input };
-  if (kind === "todo") return { ...base, todos, summary: todoProgress(todos) };
+  // Unknown, partial, truncated and mutation-only todo inputs use the generic
+  // structured body instead of passing null to a list renderer.
+  if (kind === "todo" && todos !== null) return { ...base, todos, summary: todoProgress(todos) };
   if (kind === "terminal" && typeof input.command === "string" && input.command) {
     return { ...base, terminal: { command: input.command, output, exitCode: exitCodeOf(tool, output) } };
   }
@@ -151,10 +168,10 @@ export function describeTool(tool, { cwd } = {}) {
 
 /** The newest todo list any tool call in the transcript wrote, or null. */
 export function latestTodos(messages) {
-  for (const message of [...(messages || [])].reverse()) {
-    for (const tool of [...(message.tools || [])].reverse()) {
-      const todos = todoItems(tool.input);
-      if (todos) return todos;
+  for (const message of [...(Array.isArray(messages) ? messages : [])].reverse()) {
+    for (const tool of [...(Array.isArray(message?.tools) ? message.tools : [])].reverse()) {
+      const todos = toolTodos(tool);
+      if (todos !== null) return todos;
     }
   }
   return null;

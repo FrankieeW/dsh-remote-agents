@@ -8,7 +8,7 @@ import vm from "node:vm";
 import React, { act } from "react";
 import { PRIMITIVES_ALIAS } from "./helpers/primitives-alias.js";
 
-const compiled = await build({ stdin: { contents: 'export {default} from "./src/client/ChatWorkbench.jsx"; export {createWorkspaceStore} from "./src/client/workspace-store.js";', resolveDir: process.cwd() }, bundle: true, write: false, format: "cjs", external: ["react"], alias: PRIMITIVES_ALIAS });
+const compiled = await build({ stdin: { contents: 'export {default} from "./src/client/ChatWorkbench.jsx"; export {createWorkspaceStore} from "./src/client/workspace-store.js"; export {ToolRenderBoundary} from "./src/client/chat-messages.jsx";', resolveDir: process.cwd() }, bundle: true, write: false, format: "cjs", external: ["react"], alias: PRIMITIVES_ALIAS });
 const providers = [{ id: "claude", label: "Claude Code", available: true }, { id: "omp", label: "OMP", available: false, reason: "未安装 OMP" }];
 const fixture = (id = "s1") => ({ id, name: `会话 ${id}`, provider: "claude", cwd: "/fixture", status: "idle", messages: [], pendingApprovals: [] });
 const deferred = () => { let resolve; let reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
@@ -26,13 +26,14 @@ async function mount(api, props = {}) {
   vm.runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: createRequire(import.meta.url), document, crypto: { randomUUID }, console, setTimeout: (fn, delay) => { timers.set(++nextTimer, { fn, delay }); return nextTimer; }, clearTimeout: (id) => timers.delete(id) });
   const Component = module.exports.default;
   const store = module.exports.createWorkspaceStore(api);
-  const root = createRoot(document.getElementById("root"));
+  const root = createRoot(document.getElementById("root"), { onCaughtError: () => {} });
   const render = async (more = {}) => act(async () => root.render(React.createElement(Component, { api, store, ...props, ...more })));
   await act(async () => store.start());
   await render();
   const buttons = () => [...document.querySelectorAll("button")];
   const button = (text) => buttons().find((node) => node.textContent.trim() === text || node.getAttribute("aria-label") === text);
   return { dom, timers, render, button,
+    async renderBoundary(tool, Child) { await act(async () => root.render(React.createElement(module.exports.ToolRenderBoundary, { tool }, React.createElement(Child)))); },
     async click(text) { const node = button(text); assert.ok(node, `button ${text} exists`); await act(async () => node.click()); },
     async select(id) { await act(async () => store.select(id)); },
     async expandTool(name) {
@@ -348,4 +349,32 @@ test('a stale detail response cannot overwrite saved settings and the UI reports
     await act(async()=>{stale.resolve(old);await pending;});
     await h.click('Permission mode');assert.equal([...document.querySelectorAll('.agent-chat-settings-options button')].find(b=>b.textContent==='Read only').getAttribute('aria-pressed'),'true');
   }finally{await h.cleanup();}
+});
+
+test('OMP phased todo events keep messages, composer and stop control mounted while running', async () => {
+  const state = { ...fixture('omp-todo'), provider:'omp', status:'running', messages:[{id:'reply',role:'assistant',text:'Working on the project',tools:[{id:'todo-call',name:'todo',status:'done',input:{op:'init',list:[{phase:'Implementation',items:['Inspect API','Build UI']}]},result:{details:{op:'init',phases:[{name:'Implementation',tasks:[{content:'Inspect API',status:'in_progress'},{content:'Build UI',status:'pending'}]}]}}}]}] };
+  const h = await mount(async method => {
+    if(method==='chatList')return{sessions:[state],providers:[{id:'omp',available:true}]};
+    if(method==='chatGet')return structuredClone(state);
+    throw Error(method);
+  });
+  try {
+    await h.select('omp-todo');
+    assert.match(document.body.textContent,/Working on the project/);
+    assert.match(document.body.textContent,/1 in progress · 1 pending/);
+    assert.ok(h.button('Stop generating'));
+    assert.ok(document.querySelector('textarea'));
+    await h.expandTool('todo');assert.match(document.body.textContent,/Inspect API/);
+    state.messages[0].tools.push({id:'unknown',name:'todo',status:'running',input:{op:'future-format'}});
+    await h.tick(700);assert.ok(h.button('Stop generating'));assert.ok(document.querySelector('textarea'));
+  } finally { await h.cleanup(); }
+});
+
+test('a tool component rendering failure is contained with a raw-data fallback', async () => {
+  const h = await mount(async method => method === 'chatList' ? { sessions:[], providers:[] } : {machines:[],workspaces:[]});
+  try {
+    await h.renderBoundary({name:'unknown-tool',input:{path:'/fixture'},result:'retained output'},function BrokenTool(){throw Error('fixture render failure');});
+    assert.match(document.body.textContent,/Tool display unavailable/);
+    assert.match(document.body.textContent,/retained output/);
+  } finally { await h.cleanup(); }
 });

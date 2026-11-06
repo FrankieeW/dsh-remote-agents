@@ -42,7 +42,20 @@ try {
   state=await rpc('chatGet',{id:s.id});await rpc('chatApprove',{id:s.id,approvalId:state.pendingApprovals[0].id,allow:false});await waitFor(async()=>(await rpc('chatGet',{id:s.id})).status==='idle');
   assert.match((await rpc('chatGet',{id:s.id})).messages.at(-1).text,/DECISION_decline/);
   await rpc('chatSend',{id:s.id,text:'WAIT',requestId:'stop'});await rpc('chatInterrupt',{id:s.id});assert.equal((await rpc('chatGet',{id:s.id})).status,'interrupted');
-  await stop();boot();state=await rpc('chatGet',{id:s.id});assert.equal(state.status,'interrupted');assert.equal(state.settings.permissions,'read-only');assert.equal(state.providerSessionId,'owned-test-thread');
+  await stop();
+  // Reopen an existing OMP transcript with the phased shape that previously
+  // crashed the entire chat. This fixture contains no production conversation data.
+  const historyPath=join(root,'state','conversations.json');
+  const history=JSON.parse(await readFile(historyPath,'utf8'));
+  history.sessions.push({ ...history.sessions[0], id:'omp-phased-ui', provider:'omp', name:'OMP phased todo regression', status:'idle', requests:[], providerSessionId:undefined,
+    settings:{model:null,effort:null,permissions:'cli'}, settingsRevision:0,
+    messages:[{id:'omp-reply',role:'assistant',text:'OMP transcript remains visible',tools:[
+      {id:'todo-init',name:'todo',status:'done',input:{op:'init',list:[{phase:'Implementation',items:['Inspect API','Build UI']}]},result:{details:{op:'init',phases:[{name:'Implementation',tasks:[{content:'Inspect API',status:'in_progress'},{content:'Build UI',status:'pending'}]}]}}},
+      {id:'todo-unknown',name:'todo',status:'done',input:{op:'read'},result:'truncated result…'}
+    ]}]
+  });
+  await writeFile(historyPath,JSON.stringify(history));
+  boot();state=await rpc('chatGet',{id:s.id});assert.equal(state.status,'interrupted');assert.equal(state.settings.permissions,'read-only');assert.equal(state.providerSessionId,'owned-test-thread');
   await rpc('chatSend',{id:s.id,text:'resume',requestId:'resume'});await waitFor(async()=>(await rpc('chatGet',{id:s.id})).status==='idle');
   await rpc('chatMetadata',{id:s.id,name:'Renamed installed session',pinned:true,archived:true});assert.equal((await rpc('chatSearch',{query:'PACKAGED_OK'}))[0].id,s.id);
   assert.match((await rpc('chatExport',{id:s.id,format:'markdown'})).content,/PACKAGED_OK/);
@@ -64,9 +77,14 @@ try {
   assert.equal(props.store.getSnapshot().machines.length,2);assert.equal(props.store.getSnapshot().workspaceError,'');
   await act(async()=>{props.store.select('');});await act(async()=>{props.store.select(s.id);await new Promise(r=>setTimeout(r,50));});
   assert.match(document.body.textContent,/PACKAGED_OK/);assert.match(document.body.textContent,/Renamed installed session/);
+  await act(async()=>{props.store.select('omp-phased-ui');await new Promise(r=>setTimeout(r,50));});
+  assert.match(document.body.textContent,/OMP transcript remains visible/);
+  assert.match(document.body.textContent,/1 in progress · 1 pending/);
+  assert.ok(document.querySelector('textarea'), 'composer survives OMP todo history');
+  assert.ok([...document.querySelectorAll('button')].some(button=>button.textContent==='Close session'));
   await act(async()=>{ui.unmount();ui=null;for(const dispose of uiDisposers.splice(0))dispose?.();});
   await rpc('removeMachine',{machineId:machine.id});await stop();
-  console.log(`Installed ${packageInfo.version}: artifact integrity, actual CLI subprocess, settings conflicts, tools, approval denial, interrupt/resume, restart, metadata/search/export, shipped client, startup failure and reconnect PASS`);
+  console.log(`Installed ${packageInfo.version}: artifact integrity, actual CLI subprocess, settings conflicts, tools, approval denial, interrupt/resume, restart, metadata/search/export, shipped client including OMP phased/unknown todo history, startup failure and reconnect PASS`);
 } finally {
   if(ui)await act(async()=>ui.unmount());
   for(const dispose of uiDisposers)await dispose?.();
