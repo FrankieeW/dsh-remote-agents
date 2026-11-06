@@ -36,7 +36,8 @@ const browser = await build({
   target: "es2022",
   jsx: "automatic",
   loader: { ".css": "text" },
-  external: ["react", "react/jsx-runtime", "react-dom", "react-dom/client"],
+  // Supplied by the DSH shell's shared module table; never bundled.
+  external: ["react", "react/jsx-runtime", "react-dom", "react-dom/client", "@deepseek-ai/dsh-client-ui-primitives"],
   minify: false,
 });
 const body = browser.outputFiles[0].text;

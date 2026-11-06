@@ -73,7 +73,7 @@ test('lazy isolated safe argv, negotiate v2, ACK and agent_end do not settle', a
   const h = await setup(t); assert.equal(h.calls.length, 0);
   const { promise, command } = await h.prompt('hello'); assert.ok(command);
   const call = h.calls[0]; assert.equal(call.settings.shell, false); assert.equal(call.settings.cwd, h.root);
-  assert.deepEqual(call.argv.slice(0, 10), ['--mode', 'rpc-ui', '--approval-mode', 'always-ask', '--no-extensions', '--no-title', '--no-pty', '--cwd', h.root, '--session-dir']);
+  assert.deepEqual(call.argv, ['--mode', 'rpc-ui', '--no-title', '--no-pty', '--cwd', h.root, '--session-dir', join(h.root, 'app-1'), '--approval-mode', 'always-ask']);
   assert.ok(!call.argv.includes('--continue')); assert.equal((await stat(join(h.root, 'app-1'))).mode & 0o777, 0o700);
   let settled = false; promise.then(() => { settled = true; });
   h.child.ack(command); h.child.frame({ type: 'agent_end' }); finish(h, { id: 'unrelated' }); await tick(); assert.equal(settled, false);
@@ -190,4 +190,13 @@ test('slash and shell shortcuts rejected before startup, never executed or reint
 test('abort before first send never spawns; concurrent send is rejected', async t => {
   const controller = new AbortController(); const h = await setup(t, { signal: controller.signal }); controller.abort(); await assert.rejects(h.adapter.send('hi'), /closed/); assert.equal(h.calls.length, 0);
   const active = await setup(t); const { promise, command } = await active.prompt('one'); await assert.rejects(active.adapter.send('two'), /already active/); active.child.ack(command); finish(active, command); await promise;
+});
+
+test('OMP forwards model/thinking/YOLO and can inherit native approval config', async t => {
+  for (const permissions of ['cli', 'yolo']) {
+    const h=await setup(t,{session:{settings:{model:'provider/model',effort:'high',permissions}}});
+    const {promise,command}=await h.prompt('hello');h.child.ack(command);finish(h,command);await promise;
+    const argv=h.calls[0].argv;assert.equal(argv[argv.indexOf('--model')+1],'provider/model');assert.equal(argv[argv.indexOf('--thinking')+1],'high');
+    assert.equal(argv.includes('--approval-mode'),permissions!=='cli');if(permissions==='yolo')assert.equal(argv[argv.indexOf('--approval-mode')+1],'yolo');assert.ok(!argv.includes('--no-extensions'));
+  }
 });

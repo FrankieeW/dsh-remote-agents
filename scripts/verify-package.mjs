@@ -1,0 +1,76 @@
+import assert from 'node:assert/strict';
+import { mkdtemp, readFile, writeFile, chmod, rm, readdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import vm from 'node:vm';
+import { build } from 'esbuild';
+import { JSDOM } from 'jsdom';
+import React, { act } from 'react';
+
+const root = await mkdtemp(join(tmpdir(), 'dsh-installed-e2e-'));
+const disposers = [], routes = new Map();
+const packageInfo = JSON.parse(await readFile('package.json', 'utf8'));
+let ui, dom, uiDisposers = [];
+const previous = {window:globalThis.window,document:globalThis.document,IS_REACT_ACT_ENVIRONMENT:globalThis.IS_REACT_ACT_ENVIRONMENT};
+try {
+  const tarball = process.argv[2] ? resolve(process.argv[2]) : (() => { execFileSync('npm',['pack','--pack-destination',root],{stdio:'pipe'});return join(root,`dsh-remote-agents-${packageInfo.version}.tgz`); })();
+  execFileSync('npm',['install','--prefix',root,'--ignore-scripts','--no-audit','--no-fund',tarball],{stdio:'pipe',timeout:180000});
+  const installed = join(root,'node_modules','dsh-remote-agents');
+  for(const file of ['lib/index.js','lib/client.js','package.json']) assert.deepEqual(await readFile(join(installed,file)),await readFile(file));
+  const fake = join(root,'codex');await writeFile(fake,`#!${process.execPath}\n`+await readFile('scripts/fixtures/codex-process.cjs','utf8'));await chmod(fake,0o700);
+  const host = await import(pathToFileURL(join(installed,'lib/index.js')));
+  const boot = () => host.apply({effect:fn=>disposers.push(fn()),inject:()=>{},connection:{fetch:{register:route=>{routes.set(route.path,route);return()=>routes.delete(route.path);}}}}, {statePath:join(root,'state','fleet.json'),codexExecutable:fake,claudeExecutable:join(root,'absent-claude'),ompExecutable:join(root,'absent-omp')});
+  const stop = async () => { for(const dispose of disposers.splice(0)) await dispose?.(); };
+  const rpc = async (method,payload={}) => {
+    const route=routes.get(`/api/remote-agents/${method}`);assert.ok(route,method);
+    const response=await route.fetch(new Request(`http://localhost/api/remote-agents/${method}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type:'client-request',rpcId:crypto.randomUUID(),method:`remote-agents/${method}`,payload})}));
+    const body=await response.json();if(!body.result.ok)throw Object.assign(Error(body.result.error.message),{code:body.result.error.code});return body.result.value;
+  };
+  const waitFor = async check => {for(let n=0;n<300;n++){if(await check())return;await new Promise(r=>setTimeout(r,20));}throw Error('Installed package verification timed out');};
+  boot();assert.equal((await rpc('workspaceCatalog')).pluginVersion,packageInfo.version);
+  const machine=await rpc('addMachine',{name:'Fixture SSH',host:'fixture.invalid'});assert.equal((await rpc('workspaceCatalog')).machines.length,2);
+  const s=await rpc('chatCreate',{provider:'codex',cwd:root,name:'Installed smoke'});
+  await rpc('chatConfigure',{id:s.id,patch:{permissions:'read-only',effort:'low'},expectedRevision:0});
+  await assert.rejects(rpc('chatConfigure',{id:s.id,patch:{model:'stale'},expectedRevision:0}),{code:'CONFLICT'});
+  await rpc('chatSend',{id:s.id,text:'hello',requestId:'once'});await waitFor(async()=> (await rpc('chatGet',{id:s.id})).status==='idle');
+  let state=await rpc('chatGet',{id:s.id});assert.equal(state.messages.at(-1).text,'PACKAGED_OK');assert.equal(state.messages.at(-1).tools.length,1);
+  assert.equal((await rpc('chatSend',{id:s.id,text:'hello',requestId:'once'})).duplicate,true);
+  await rpc('chatSend',{id:s.id,text:'APPROVAL',requestId:'approval'});await waitFor(async()=>(await rpc('chatGet',{id:s.id})).status==='waiting');
+  state=await rpc('chatGet',{id:s.id});await rpc('chatApprove',{id:s.id,approvalId:state.pendingApprovals[0].id,allow:false});await waitFor(async()=>(await rpc('chatGet',{id:s.id})).status==='idle');
+  assert.match((await rpc('chatGet',{id:s.id})).messages.at(-1).text,/DECISION_decline/);
+  await rpc('chatSend',{id:s.id,text:'WAIT',requestId:'stop'});await rpc('chatInterrupt',{id:s.id});assert.equal((await rpc('chatGet',{id:s.id})).status,'interrupted');
+  await stop();boot();state=await rpc('chatGet',{id:s.id});assert.equal(state.status,'interrupted');assert.equal(state.settings.permissions,'read-only');assert.equal(state.providerSessionId,'owned-test-thread');
+  await rpc('chatSend',{id:s.id,text:'resume',requestId:'resume'});await waitFor(async()=>(await rpc('chatGet',{id:s.id})).status==='idle');
+  await rpc('chatMetadata',{id:s.id,name:'Renamed installed session',pinned:true,archived:true});assert.equal((await rpc('chatSearch',{query:'PACKAGED_OK'}))[0].id,s.id);
+  assert.match((await rpc('chatExport',{id:s.id,format:'markdown'})).content,/PACKAGED_OK/);
+  await rpc('chatMetadata',{id:s.id,archived:false});
+  // Load the shipped lazy factory; only the DSH shared primitives are DOM stand-ins.
+  const primitives=await build({entryPoints:['test/fixtures/primitives.jsx'],bundle:true,write:false,format:'cjs',external:['react']});
+  const require=createRequire(import.meta.url),prim={exports:{}};vm.runInNewContext(primitives.outputFiles[0].text,{module:prim,exports:prim.exports,require});
+  dom=new JSDOM('<html><head></head><body><div id="root"></div></body></html>',{url:'http://localhost',pretendToBeVisual:true});
+  Object.assign(globalThis,{window:dom.window,document:dom.window.document,IS_REACT_ACT_ENVIRONMENT:true});
+  let client;dom.window.__ModuleLoader__={load:definition=>{client=definition.factory(name=>name==='@deepseek-ai/dsh-client-ui-primitives'?prim.exports:require(name));}};
+  vm.runInNewContext(await readFile(join(installed,'lib/client.js'),'utf8'),{window:dom.window,document:dom.window.document,console,crypto,AbortController,URL,Blob,setTimeout,clearTimeout});
+  const slots=[];let offline=true;
+  await act(async()=>client.apply({effect:fn=>uiDisposers.push(fn()),slots:{inject:(name,fn)=>{const result=fn();if(result?.[Symbol.iterator])for(const value of result)void value;},register:(meta,Component)=>slots.push({meta,Component})},connection:{rpc:{call:async(channel,method,payload)=>{if(offline)throw Error('Fixture connection unavailable');return{ok:true,value:await rpc(method.slice('remote-agents/'.length),payload)};}}},layout:{beginNavigation:()=>new AbortController().signal,selectPanel:()=>{}},workspaces:{delete:async()=>{}},uiWorkspace:{}}));
+  const slot=slots.find(s=>s.meta.key==='remote-agents-chat'),props=slot.meta.inject();
+  const {createRoot}=await import('react-dom/client');ui=createRoot(document.getElementById('root'));
+  await act(async()=>{props.store.select(s.id);ui.render(React.createElement(slot.Component,props));});
+  assert.match(props.store.getSnapshot().workspaceError,/connection unavailable/);
+  offline=false;await act(async()=>{props.store.refresh();await new Promise(r=>setTimeout(r,50));});
+  assert.equal(props.store.getSnapshot().machines.length,2);assert.equal(props.store.getSnapshot().workspaceError,'');
+  await act(async()=>{props.store.select('');});await act(async()=>{props.store.select(s.id);await new Promise(r=>setTimeout(r,50));});
+  assert.match(document.body.textContent,/PACKAGED_OK/);assert.match(document.body.textContent,/Renamed installed session/);
+  await act(async()=>{ui.unmount();ui=null;for(const dispose of uiDisposers.splice(0))dispose?.();});
+  await rpc('removeMachine',{machineId:machine.id});await stop();
+  console.log(`Installed ${packageInfo.version}: artifact integrity, actual CLI subprocess, settings conflicts, tools, approval denial, interrupt/resume, restart, metadata/search/export, shipped client, startup failure and reconnect PASS`);
+} finally {
+  if(ui)await act(async()=>ui.unmount());
+  for(const dispose of uiDisposers)await dispose?.();
+  for(const dispose of disposers)await dispose?.();
+  dom?.window.close();Object.assign(globalThis,previous);
+  await rm(root,{recursive:true,force:true});
+}

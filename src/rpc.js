@@ -1,3 +1,5 @@
+import packageInfo from "../package.json" with { type: "json" };
+
 // Keep the transport adapter testable without loading a DSH runtime.
 export const CHANNEL = "/api";
 export const RPC_PREFIX = "remote-agents/";
@@ -20,14 +22,44 @@ export const ENDPOINTS = [
   "chatInterrupt",
   "chatApprove",
   "chatClose",
+  "chatOptions",
+  "chatConfigure",
+  "chatMetadata",
+  "chatSearch",
+  "chatExport",
+  "workspaceRemove",
+  "agentUpdatePlan",
+  "chatProviders",
+  "workspaceCatalog",
+  "workspaceBrowse",
+  "workspaceAdd",
+  "agentUpdate",
+  "agentUpdateStatus",
 ];
 const failure = (code, message) => ({
   ok: false,
   error: { code, message, details: {} },
 });
-export function createHandler(fleet, chat, providerDescriptions = async () => []) {
+export function createHandler(fleet, chat, providerDescriptions = async () => [], hosts, registry) {
   const methods = Object.freeze({
     snapshot: () => fleet.snapshot(),
+    agentUpdate: async p => {
+      const sessions = await chat.list();
+      if (sessions.some(s => s.machineId === p.machineId && s.provider === p.provider && ['running', 'waiting'].includes(s.status))) throw new Error('Stop active sessions for this CLI before updating.');
+      return registry.startUpdate(p);
+    },
+    agentUpdateStatus: p => registry.updateStatus(p.id),
+    agentUpdatePlan: p => registry.updatePlan(p),
+    workspaceRemove: p => fleet.removeWorkspace(p.workspaceId),
+    workspaceCatalog: async () => {
+      const { machines, projects } = await fleet.snapshot({ readOnly: true });
+      return { pluginVersion: packageInfo.version, machines, workspaces: projects.filter(p => p.machineId !== 'local').map(p => ({ workspaceId: p.id, path: p.cwd, title: p.name, machineId: p.machineId, machineName: machines.find(m => m.id === p.machineId)?.name })) };
+    },
+    workspaceBrowse: p => hosts.browse(p),
+    workspaceAdd: async p => {
+      const cwd = await hosts.validateDirectory(p.machineId, p.path);
+      return fleet.addWorkspace({ machineId: p.machineId, cwd });
+    },
     previewHerdr: (p) => fleet.previewHerdr(p),
     importHerdr: (p) => fleet.importHerdr(p),
     addMachine: (p) => fleet.addMachine(p),
@@ -42,10 +74,16 @@ export function createHandler(fleet, chat, providerDescriptions = async () => []
     ...(chat ? {
       chatList: async () => ({ sessions: await chat.list(), providers: await providerDescriptions() }),
       chatCreate: async (p) => {
-        const provider = (await providerDescriptions()).find(item => item.id === p.provider);
+        const provider = (await providerDescriptions(p.machineId || 'local')).find(item => item.id === p.provider);
         if (!provider?.available) throw new Error(provider?.reason || "This backend is unavailable");
         return chat.create(p);
       },
+      chatOptions: p => chat.options(p.id, p.refresh),
+      chatConfigure: p => chat.configure(p),
+      chatMetadata: p => chat.metadata(p),
+      chatSearch: p => chat.search(p.query),
+      chatExport: p => chat.export(p.id, p.format),
+      chatProviders: p => providerDescriptions(p.machineId || 'local', p.refresh === true),
       chatGet: (p) => chat.get(p.id),
       chatSend: (p) => chat.send(p),
       chatInterrupt: (p) => chat.interrupt(p.id),

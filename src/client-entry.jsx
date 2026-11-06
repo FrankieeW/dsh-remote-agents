@@ -1,4 +1,5 @@
 import React from "react";
+import packageInfo from "../package.json";
 import ChatWorkbench from "./client/ChatWorkbench.jsx";
 import FleetPage from "./client/FleetPage.jsx";
 import { WorkspaceBrowser, NativeBackendChoice, NativeAgentIdentity } from "./client/WorkspaceIntegration.jsx";
@@ -34,14 +35,22 @@ function FleetIcon({ size = 20 }) {
 }
 export function apply(ctx) {
   const api = async (endpoint, payload = {}, signal) => {
+    const controller = new AbortController();
+    const abort = () => controller.abort(signal?.reason);
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+    const timer = setTimeout(() => controller.abort(new Error("Connection timed out. Retry after the host reconnects.")), 30000);
+    try {
     const result = await ctx.connection.rpc.call(
       CHANNEL,
       RPC_PREFIX + endpoint,
       payload,
-      signal,
+      controller.signal,
     );
-    if (!result.ok) throw new Error(result.error?.message || "Operation failed");
+    if (!result.ok) throw Object.assign(new Error(result.error?.message || "Operation failed"), { code: result.error?.code });
+    if (endpoint === "workspaceCatalog" && result.value?.pluginVersion !== packageInfo.version) throw new Error("The installed plugin changed. Restart DeepSeek Harness to load matching host and interface versions.");
     return result.value;
+    } finally { clearTimeout(timer); signal?.removeEventListener("abort", abort); }
   };
   const store = createWorkspaceStore(api);
   const onOpen = ({ provider, id }) => {
@@ -53,11 +62,12 @@ export function apply(ctx) {
     if (!workspace?.path) throw new Error("Choose a workspace first.");
     const navigation = ctx.layout.beginNavigation();
     if (provider === "native") {
+      if (workspace.machineId && workspace.machineId !== "local") throw new Error("DSH native sessions run on the local Host. Choose a remote CLI agent.");
       const target = workspace.workspaceId ? workspace : await ctx.workspaces.create({ path: workspace.path });
       if (!navigation.aborted) ctx.uiWorkspace.startSession(target.workspaceId, { whenDraftExists: "keep" });
       return;
     }
-    const session = await api("chatCreate", { provider, cwd: workspace.path });
+    const session = await api("chatCreate", { provider, cwd: workspace.path, machineId: workspace.machineId || "local" });
     if (!session?.id) throw new Error("The server did not return a session ID.");
     store.update(session);
     if (!navigation.aborted) { store.select(session.id); ctx.layout.selectPanel(CHAT_PANEL); }
@@ -91,7 +101,8 @@ export function apply(ctx) {
     name: "sidebar.workspaces",
     priority: -10,
     inject: () => ({ store, chatPanel: CHAT_PANEL, onCreate, onOpen, onNativeAction,
-      onAddWorkspace: (path) => ctx.workspaces.create({ path }) }),
+      onRemoveWorkspace: workspace => workspace.machineId && workspace.machineId !== "local" ? store.removeWorkspace(workspace.workspaceId) : ctx.workspaces.delete(workspace.workspaceId),
+      onAddWorkspace: (path, machineId = "local") => machineId === "local" ? ctx.workspaces.create({ path }) : store.addRemoteWorkspace(machineId, path) }),
   }, WorkspaceBrowser));
   ctx.slots.inject("conversation.hero.options", () => ctx.slots.register({
     name: "conversation.hero.options", id: "remote-agents.backend", order: 40,

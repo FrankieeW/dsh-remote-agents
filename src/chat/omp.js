@@ -1,3 +1,4 @@
+import { legacySettings } from './settings.js';
 import { spawn } from 'node:child_process';
 import { mkdir, lstat, chmod, realpath } from 'node:fs/promises';
 import { resolve, join, isAbsolute, relative } from 'node:path';
@@ -12,9 +13,11 @@ const error = message => new Error(`OMP: ${message}`);
 const within = (root, path) => { const rel = relative(root, path); return rel && rel !== '..' && !rel.startsWith('../') && !isAbsolute(rel); };
 
 /** Lazy per-app-session subprocess; no shell, terminal, auth inspection or global settings writes. */
-export function createOmpProvider({ spawnFn = spawn, executable = 'omp', sessionRoot = join(homedir(), '.dsh', 'remote-agents', 'omp'), startupTimeout = 15000, requestTimeout = 30000, closeGrace = 250 } = {}) {
+export function createOmpProvider({ spawnFn = spawn, executable = 'omp', execution, sessionRoot = join(homedir(), '.dsh', 'remote-agents', 'omp'), startupTimeout = 15000, requestTimeout = 30000, closeGrace = 250 } = {}) {
   return async ({ session, emit = () => {}, requestApproval = async () => false, signal } = {}) => {
     if (!session || !/^[A-Za-z0-9_-]{1,128}$/.test(session.id) || !isAbsolute(session.cwd || '')) throw error('invalid session identity/cwd');
+    const settings = session.settings || legacySettings('omp');
+    if (execution?.remote) spawnFn = execution.spawn;
     let directory = join(resolve(sessionRoot), session.id);
     let child, starting, closed = false, failure, exited = false, closing;
     let turn, sequence = 0, writeQueue = Promise.resolve(), diagnosticBytes = 0;
@@ -150,14 +153,20 @@ export function createOmpProvider({ spawnFn = spawn, executable = 'omp', session
     }
     async function start() {
       if (closed || signal?.aborted) throw error('session closed');
-      await mkdir(directory, { recursive: true, mode: 0o700 });
-      const info = await lstat(directory);
-      if (!info.isDirectory() || info.isSymbolicLink()) throw error('unsafe session directory');
-      await chmod(directory, 0o700);
-      directory = await realpath(directory);
-      const cwd = await realpath(session.cwd);
+      let cwd;
+      if (execution?.remote) {
+        directory = await execution.sessionDirectory(session.id);
+        cwd = await execution.canonicalize(session.cwd);
+      } else {
+        await mkdir(directory, { recursive: true, mode: 0o700 });
+        const info = await lstat(directory);
+        if (!info.isDirectory() || info.isSymbolicLink()) throw error('unsafe session directory');
+        await chmod(directory, 0o700);
+        directory = await realpath(directory);
+        cwd = await realpath(session.cwd);
+      }
       if (closed || signal?.aborted) throw error('session closed');
-      const argv = ['--mode', 'rpc-ui', '--approval-mode', 'always-ask', '--no-extensions', '--no-title', '--no-pty', '--cwd', cwd, '--session-dir', directory];
+      const argv = ['--mode', 'rpc-ui', '--no-title', '--no-pty', '--cwd', cwd, '--session-dir', directory, ...(settings.permissions !== 'cli' ? ['--approval-mode', settings.permissions] : []), ...(settings.model ? ['--model', settings.model] : []), ...(settings.effort ? ['--thinking', settings.effort] : [])];
       if (session.providerSessionId) argv.push('--continue');
       child = spawnFn(executable, argv, { cwd, shell: false, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, PI_NO_TITLE: '1', PI_NO_PTY: '1' } });
       child.on('error', () => fail(error('could not start subprocess')));
@@ -179,6 +188,7 @@ export function createOmpProvider({ spawnFn = spawn, executable = 'omp', session
         if (state.cwd !== undefined && resolve(state.cwd) !== cwd) throw error('native cwd mismatch');
         if (state.sessionFile && !within(directory, resolve(state.sessionFile))) throw error('native session escaped private directory');
         emit('provider.session', { id: state.sessionId });
+        emit('provider.settings', { model: state.model?.id ? `${state.model.provider}/${state.model.id}` : undefined, effort: state.thinkingLevel, permissions: state.approvalMode });
       } catch (reason) { fail(reason); throw reason; } finally { clearTimeout(timer); }
     }
     const adapter = {

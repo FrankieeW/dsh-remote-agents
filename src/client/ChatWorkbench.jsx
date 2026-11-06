@@ -1,71 +1,94 @@
-import React, { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createPoller } from "./polling.js";
+import { diagnose } from "./diagnostics.js";
+import { ChatSettings } from "./chat-settings.jsx";
+import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { ChatHeader } from "./chat-header.jsx";
+import { Composer } from "./chat-composer.jsx";
+import { Transcript, TurnError } from "./chat-messages.jsx";
+import { ApprovalCard, CloseDialog } from "./chat-panels.jsx";
+import { TodoDock } from "./chat-todos.jsx";
 import AgentLogo from "./AgentLogo.jsx";
+import { agentProfile, inputIssue } from "./agent-profiles.js";
+import { latestTodos } from "./tool-presentation.js";
 
-const LABELS = { native: "DeepSeek Harness", claude: "Claude Code", omp: "OMP" };
-const STATUS = { idle: "Ready", running: "Running", starting: "Starting", waiting: "Awaiting approval", waiting_approval: "Awaiting approval", awaiting_approval: "Awaiting approval", error: "Error", closed: "Closed", interrupted: "Interrupted", completed: "Completed" };
 const running = (session) => ["running", "starting", "waiting", "waiting_approval", "awaiting_approval"].includes(session?.status) || !!session?.pendingApprovals?.length;
 const errorText = (error) => typeof error === "string" ? error : error?.message || "The request failed. Please try again.";
-const printable = (value) => { if (typeof value === "string") return value; try { return JSON.stringify(value, null, 2) ?? ""; } catch { return "Unable to display this data"; } };
 
-function ToolCall({ tool }) {
-  return <details className="fleet-chat-tool"><summary>{tool.name || "Tool call"}{tool.status ? ` · ${tool.status}` : ""}{tool.isError ? " · Failed" : ""}</summary>
-    {tool.input !== undefined && <><h4>Input</h4><pre>{printable(tool.input)}</pre></>}
-    {tool.result !== undefined && <><h4>Result</h4><pre>{printable(tool.result)}</pre></>}
-    {tool.text && <div className="chat-text">{tool.text}</div>}
-    {tool.truncated && <p className="fleet-muted">Tool output has been truncated.</p>}
-  </details>;
+/** Polls the selected session; a newer selection or local action invalidates late responses. */
+function useSessionDetail(api, store, selectedId) {
+  const [detail, setDetail] = useState(null);
+  const [getError, setGetError] = useState("");
+  const epoch = useRef(0), poller = useRef(null);
+  useEffect(() => {
+    let cancelled = false;
+    let lastStatus = "idle";
+    setGetError("");
+    if (!selectedId) { setDetail(null); return undefined; }
+    async function poll() {
+      try {
+        const current = epoch.current;
+        const value = await api("chatGet", { id: selectedId });
+        if (current !== epoch.current) return;
+        if (!value || value.id !== selectedId || !Array.isArray(value.messages) || !Array.isArray(value.pendingApprovals)) throw new Error("The chat response is invalid.");
+        if (!cancelled) { lastStatus = value.status; setDetail(previous => previous?.id === value.id && (previous.settingsRevision || 0) > (value.settingsRevision || 0) ? previous : value); store.update(value); setGetError(""); }
+      } catch (error) { if (!cancelled) setGetError(errorText(error)); }
+
+    }
+    const loop = createPoller(poll, { delay: () => ['running', 'waiting'].includes(lastStatus) ? 700 : 5000 });
+    poller.current = loop;
+    void loop.start();
+    return () => { cancelled = true; loop.stop(); };
+  }, [api, selectedId, store]);
+  return { detail, setDetail, getError, epoch, refresh: () => poller.current?.refresh() };
+}
+
+function Notice({ error, children, detail }) {
+  return <div className={`agent-chat-notice${error ? " is-error" : ""}`} role={error ? "alert" : "status"}>{children}{detail && <small>{detail}</small>}</div>;
 }
 
 /** Content-only conversation; navigation and creation belong to the Workspace. */
 export default function ChatWorkbench({ api, store }) {
-  const { sessions, providers, selectedId, drafts } = useSyncExternalStore(store.subscribe, store.getSnapshot);
-  const [detail, setDetail] = useState(null);
-  const [getError, setGetError] = useState("");
+  const { sessions, providers, selectedId, drafts, machines, configRevision } = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const { detail, setDetail, getError, epoch, refresh } = useSessionDetail(api, store, selectedId);
   const [busy, setBusy] = useState("");
   const [actionError, setActionError] = useState("");
-  const setDrafts = store.setDrafts;
+  const [settingsStatus, setSettingsStatus] = useState("");
   const [closeTarget, setCloseTarget] = useState(null);
   const alive = useRef(false);
   const lock = useRef(false);
-  const detailEpoch = useRef(0);
   const retries = useRef(store.attempts);
-  const composing = useRef(false);
-  const cancelRef = useRef(null);
-  const scrollEnd = useRef(null);
+  const scroller = useRef(null);
   const autoScroll = useRef(true);
+  const setDrafts = store.setDrafts;
 
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-
+  useEffect(() => { setActionError(""); setSettingsStatus(""); setCloseTarget(null); autoScroll.current = true; }, [selectedId]);
   useEffect(() => {
-    let cancelled = false;
-    let timer;
-    setGetError("");
-    if (!selectedId) { setDetail(null); return undefined; }
-    autoScroll.current = true;
-    async function poll() {
-      try {
-        const epoch = detailEpoch.current;
-        const value = await api("chatGet", { id: selectedId });
-        if (epoch !== detailEpoch.current) return;
-        if (!value || value.id !== selectedId || !Array.isArray(value.messages) || !Array.isArray(value.pendingApprovals)) throw new Error("The chat response is invalid.");
-        if (!cancelled) { setDetail(value); store.update(value); setGetError(""); }
-      } catch (error) { if (!cancelled) setGetError(errorText(error)); }
-      finally { if (!cancelled) timer = setTimeout(poll, 700); }
-    }
-    poll();
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [api, selectedId, store]);
-  useEffect(() => { setActionError(""); setCloseTarget(null); }, [selectedId]);
-  useEffect(() => { if (closeTarget) cancelRef.current?.focus(); }, [closeTarget]);
-  useEffect(() => { if (autoScroll.current) scrollEnd.current?.scrollIntoView?.({ block: "nearest" }); }, [detail]);
+    const node = scroller.current;
+    if (node && autoScroll.current) node.scrollTop = node.scrollHeight;
+  }, [detail]);
 
   const session = detail?.id === selectedId ? detail : null;
   const summary = sessions.find((item) => item.id === selectedId);
-  const selectedProvider = providers.find((item) => item.id === session?.provider);
+  const provider = session?.provider || summary?.provider;
+  const remote = session?.machineId && session.machineId !== "local";
+  const [remoteRuntimes, setRemoteRuntimes] = useState(null);
+  useEffect(() => {
+    setRemoteRuntimes(null);
+    if (!remote) return;
+    let cancelled = false;
+    store.loadProviders(session.machineId).then(items => { if (!cancelled) setRemoteRuntimes({ machineId: session.machineId, items }); }, error => {
+      if (!cancelled) setRemoteRuntimes({ machineId: session.machineId, items: [{ id: provider, available: false, reason: error.message }] });
+    });
+    return () => { cancelled = true; };
+  }, [remote, session?.machineId, provider, store, configRevision]);
+  const runtime = (remote ? remoteRuntimes?.machineId === session.machineId ? remoteRuntimes.items : [] : providers).find((item) => item.id === provider);
   const draft = drafts[selectedId] || "";
   const active = running(session);
   const closed = session?.status === "closed";
-  const canSend = !!session && !active && !closed && selectedProvider?.available === true && !!draft.trim() && !busy;
+  const unavailable = session && runtime?.available !== true ? runtime?.reason || "This runtime is unavailable. Messages cannot be sent right now." : "";
+  const canSend = !!session && !active && !closed && !unavailable && !!draft.trim() && !busy && !inputIssue(provider, draft);
+  const todos = useMemo(() => latestTodos(session?.messages), [session?.messages]);
 
   async function act(label, operation) {
     if (lock.current) return;
@@ -92,14 +115,29 @@ export default function ChatWorkbench({ api, store }) {
       setDrafts((previous) => ({ ...previous, [id]: previous[id] === text ? "" : previous[id] }));
       if (retries.current.get(id) === attempt) retries.current.delete(id);
       if (alive.current) {
-        detailEpoch.current += 1;
+        epoch.current += 1;
+        autoScroll.current = true;
         if (!result.duplicate) {
           setDetail((previous) => previous?.id === id ? { ...previous, status: "running" } : previous);
-          const summary = store.getSnapshot().sessions.find((item) => item.id === id);
-          if (summary) store.update({ ...summary, status: "running" });
+          const current = store.getSnapshot().sessions.find((item) => item.id === id);
+          if (current) store.update({ ...current, status: "running" });
+          void refresh();
         }
       }
     });
+  }
+  async function configure(patch) {
+    if (lock.current || !session || active || closed) throw new Error("Finish the current operation before changing settings.");
+    const id = session.id;
+    lock.current = true; setBusy("Update settings"); setSettingsStatus("Saving settings…"); setActionError("");
+    epoch.current++;
+    try {
+      const result = await api("chatConfigure", { id, patch, expectedRevision: session.settingsRevision || 0 });
+      if (!result || result.id !== id) throw new Error("The server did not confirm the settings change.");
+      store.update(result);
+      if (alive.current) { epoch.current++; setDetail(previous => previous?.id === id ? result : previous); setSettingsStatus("Settings saved · applies to the next turn"); }
+    } catch (error) { if (alive.current) setSettingsStatus("Settings not saved — " + errorText(error)); throw error; }
+    finally { lock.current = false; if (alive.current) setBusy(""); }
   }
   function approve(approval, allow) {
     const id = selectedId;
@@ -107,7 +145,7 @@ export default function ChatWorkbench({ api, store }) {
       const result = await api("chatApprove", { id, approvalId: approval.id, allow });
       if (result?.id === id) store.update(result);
       if (alive.current) {
-        detailEpoch.current += 1;
+        epoch.current += 1;
         setDetail((previous) => previous?.id === id ? result?.id === id && Array.isArray(result.messages) ? result : { ...previous, pendingApprovals: previous.pendingApprovals.filter((item) => item.id !== approval.id) } : previous);
       }
     });
@@ -118,63 +156,48 @@ export default function ChatWorkbench({ api, store }) {
       if (!result || result.id !== id || !Array.isArray(result.messages)) throw new Error("The chat response is invalid.");
       store.update(result);
       if (alive.current) {
-        detailEpoch.current += 1;
+        epoch.current += 1;
         setDetail((previous) => previous?.id === id ? result : previous);
       }
     });
   }
 
-  return <main className="fleet-page chat-workbench">
-      <section className="chat-main" aria-label="Chat workspace">
-        {actionError && <div className="fleet-alert fleet-alert--error" role="alert">{actionError}<small>Messages are not retried automatically. Your unsent text is preserved.</small></div>}
-        {!selectedId ? <div className="chat-welcome"><h2>Choose a workspace session</h2><p>Create or select an agent in the Workspace sidebar.</p></div> : <>
-          <div className="chat-session-header"><div><h2><AgentLogo provider={session?.provider || summary?.provider} size={22} />{session?.name || summary?.name || "Loading session…"}</h2><p>{LABELS[session?.provider || summary?.provider] || ""} · {session ? STATUS[session.status] || "Unknown status" : "Syncing"}</p><small>{session?.cwd || summary?.cwd}</small></div><button className="fleet-button" disabled={!!busy || !session || closed} onClick={() => setCloseTarget({ id: session.id, name: session.name })}>Close session</button></div>
-          {getError && <div className="fleet-alert fleet-alert--error" role="alert">{getError}{session && <small>Showing the last loaded messages while polling retries.</small>}</div>}
-          {session?.error && <div className="fleet-alert fleet-alert--error" role="alert">{errorText(session.error)}</div>}
-          {session?.persistenceError && <div className="fleet-alert fleet-alert--error" role="alert">Could not save session history: {session.persistenceError}</div>}
-          {session?.historyTruncated && <p className="fleet-muted">Earlier messages have been truncated. Only the retained history is shown.</p>}
-          <div className="fleet-chat-transcript" aria-label="Conversation messages" onScroll={(event) => { const node = event.currentTarget; autoScroll.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80; }}>
-            {!session && <p role="status" className="fleet-muted">Loading structured messages…</p>}
-            {session && !session.messages.length && <p className="fleet-muted">No messages yet. Send your first message to start this runtime.</p>}
-            {session?.messages.map((message) => <article className={`fleet-chat-message ${message.role === "user" ? "fleet-chat-user" : "fleet-chat-assistant"}`} key={message.id} aria-label={message.role === "user" ? "User message" : "Assistant message"}><div className="chat-message-role">{message.role === "user" ? "You" : LABELS[session.provider] || "Assistant"}</div><div className="chat-text">{message.text}</div>{message.tools?.map((tool) => <ToolCall key={tool.id} tool={tool} />)}{(message.textTruncated || message.toolsTruncated) && <p className="fleet-muted">Some content in this message has been truncated.</p>}</article>)}
-            {session?.pendingApprovals.map((approval) => <section className="fleet-chat-message fleet-chat-approval" key={approval.id} aria-label="Pending approval"><h3>{approval.title || "This runtime requests approval"}</h3><p className="chat-text">{approval.description}</p>{approval.details !== undefined && <details><summary>View action details</summary><pre>{printable(approval.details)}</pre></details>}{approval.truncated && <p className="chat-error">Approval details have been truncated. Make sure you understand the action before allowing it.</p>}<button className="fleet-button" disabled={!!busy} onClick={() => approve(approval, false)}>Deny</button><button className="fleet-button fleet-button--primary" disabled={!!busy} onClick={() => approve(approval, true)}>Allow this action</button></section>)}
-            <div ref={scrollEnd} />
-          </div>
-          <form className="fleet-chat-composer" onSubmit={send}>
-            <label htmlFor="chat-message-input">{closed ? "Session closed" : "Send message"}</label>
-            <textarea id="chat-message-input" aria-label="Message content" value={draft} disabled={!session || closed}
-              onChange={(event) => setDrafts((previous) => ({ ...previous, [selectedId]: event.target.value }))}
-              onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }}
-              onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && !composing.current && event.keyCode !== 229) { event.preventDefault(); send(); } }}
-              placeholder="Type a message…" />
-            <div className="chat-composer-actions">
-              <span>{active ? "Running — you can draft your next message" : "Enter to send · Shift+Enter for a new line"}</span>
-              {active && <button type="button" className="fleet-button" disabled={!!busy || closed} onClick={() => endSession("chatInterrupt", selectedId)}>Stop generating</button>}
-              <button className="fleet-button fleet-button--primary" disabled={!canSend}>{busy === "Send message" ? "Sending…" : "Send"}</button>
-            </div>
-            {session && selectedProvider?.available !== true && <p className="chat-error">{selectedProvider?.reason || "This runtime is unavailable. Messages cannot be sent right now."}</p>}
-          </form>
-        </>}
-      </section>
-    {closeTarget && <div className="fleet-modal-backdrop" onKeyDown={(event) => {
-      if (event.key === "Escape" && !busy) setCloseTarget(null);
-      if (event.key === "Tab") {
-        const controls = event.currentTarget.querySelectorAll("button:not(:disabled)");
-        const first = controls[0]; const last = controls[controls.length - 1];
-        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
-        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
-      }
-    }}>
-      <section className="fleet-modal" role="alertdialog" aria-modal="true" aria-labelledby="chat-close-title">
-        <h2 id="chat-close-title">Close “{closeTarget.name || "session"}”?</h2>
-        <p>This ends the external session. Any running task will stop, and you will no longer be able to send messages.</p>
-        <div>
-          <button ref={cancelRef} className="fleet-button" disabled={!!busy} onClick={() => setCloseTarget(null)}>Cancel</button>
-          <button className="fleet-button fleet-button--danger" disabled={!!busy} onClick={() => {
-            const id = closeTarget.id; setCloseTarget(null); endSession("chatClose", id);
-          }}>Confirm close</button>
-        </div>
-      </section>
-    </div>}
+  if (!selectedId) {
+    return <main className="agent-chat"><div className="agent-chat-welcome">
+      <h2>Choose a session</h2>
+      <p>Open a Claude Code, Codex or OMP session from the Workspace sidebar, or start one with the new-session button beside a workspace.</p>
+    </div></main>;
+  }
+  return <main className="agent-chat" data-agent={provider}>
+    <ChatHeader session={session} summary={summary} provider={provider} machine={machines?.find(m => m.id === session?.machineId)} busy={!!busy} onExport={async format => { await act("Export conversation", async () => { const file = await api("chatExport", { id: session.id, format }); const url = URL.createObjectURL(new Blob([file.content], { type: file.mime })); const a = document.createElement("a"); a.href = url; a.download = file.filename; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }); }} onClose={() => setCloseTarget({ id: session.id, name: session.name })} />
+    <div className={`agent-chat-scroll${session && !session.messages.length ? " is-empty" : ""}`} ref={scroller} aria-label="Conversation messages"
+      onScroll={(event) => { const node = event.currentTarget; autoScroll.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80; }}>
+      <div className="agent-chat-column">
+        {getError && <Notice error detail={session ? "Showing the last loaded messages while polling retries." : ""}>{getError}</Notice>}
+        {session?.persistenceError && <Notice error>Could not save session history: {session.persistenceError}</Notice>}
+        {session?.historyTruncated && <Notice>Earlier messages have been truncated. Only the retained history is shown.</Notice>}
+        {!session && <p role="status" className="agent-chat-placeholder">Loading messages…</p>}
+        {session && !session.messages.length && <div className="agent-chat-hero">
+          <AgentLogo provider={provider} size={32} decorative />
+          <h2>What would you like to work on?</h2>
+          <p>{agentProfile(provider).name} · {session.cwd.split("/").filter(Boolean).at(-1) || session.cwd}</p>
+        </div>}
+        {session && <Transcript session={session} active={active} />}
+        {session?.error && <TurnError><strong>{diagnose(session.error, provider).title}</strong><p>{diagnose(session.error, provider).action}</p><details><summary>Error details</summary>{errorText(session.error)}</details></TurnError>}
+      </div>
+      <div className="agent-chat-seat">
+        {actionError && <Notice error detail="Messages are not retried automatically. Your unsent text is preserved.">{actionError}</Notice>}
+        <TodoDock todos={todos} />
+        {session?.pendingApprovals.map((approval) => <ApprovalCard key={approval.id} approval={approval} provider={provider}
+          cwd={session.cwd} busy={!!busy} onDecide={approve} />)}
+        <Composer provider={provider} draft={draft} disabled={!session || closed} closed={closed} active={active} canSend={canSend}
+          configuration={session && runtime?.capabilities?.settings && <ChatSettings key={`${session.id}:${configRevision || 0}`} session={session} api={api} disabled={active || !!busy || closed} onConfigure={configure} saveStatus={settingsStatus} />}
+          sending={busy === "Send message"} stopDisabled={!!busy || closed} unavailable={unavailable}
+          onDraft={(value) => setDrafts((previous) => ({ ...previous, [selectedId]: value }))}
+          onSend={send} onStop={() => endSession("chatInterrupt", selectedId)} />
+      </div>
+    </div>
+    {closeTarget && <CloseDialog name={closeTarget.name} busy={!!busy} onCancel={() => setCloseTarget(null)}
+      onConfirm={() => { const id = closeTarget.id; setCloseTarget(null); endSession("chatClose", id); }} />}
   </main>;
 }

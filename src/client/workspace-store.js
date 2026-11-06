@@ -1,9 +1,13 @@
+import { createPoller } from "./polling.js";
+
 /** One plugin lifetime owns catalog polling, drafts and uncertain-send receipts. */
 export function createWorkspaceStore(api) {
-  let snapshot = { sessions: [], providers: [], selectedId: "", drafts: {}, loading: true, error: "" };
+  let snapshot = { configRevision: 0, machines: [{ id: "local", name: "Local", type: "local" }], remoteWorkspaces: [], sessions: [], providers: [], selectedId: "", drafts: {}, loading: true, error: "", workspaceError: "", workspaceLoading: true };
   const listeners = new Set();
+  const completedUpdates = new Set();
   let stopped = false;
-  let timer;
+  let catalogPoller, sessionPoller;
+  let catalogFailures = 0;
   let generation = 0;
   const revisions = new Map();
   let started = false;
@@ -15,17 +19,57 @@ export function createWorkspaceStore(api) {
     getSnapshot: () => snapshot,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     attempts: new Map(),
+    updateAgent: (machineId, provider, token) => api("agentUpdate", { machineId, provider, token }),
+    updatePlan: (machineId, provider) => api("agentUpdatePlan", { machineId, provider }),
+    async updateStatus(id) {
+      const value = await api("agentUpdateStatus", { id });
+      if (value.status !== "running" && !completedUpdates.has(id)) {
+        completedUpdates.add(id); publish({ configRevision: snapshot.configRevision + 1 });
+      }
+      return value;
+    },
+    loadProviders: (machineId, refresh = false) => api("chatProviders", { machineId, refresh }),
+    browseDirectories: (machineId, path) => api("workspaceBrowse", { machineId, path }),
+    async loadWorkspaces() {
+      try {
+        const value = await api("workspaceCatalog");
+        if (!Array.isArray(value?.machines) || !Array.isArray(value?.workspaces)) throw new Error("The workspace catalog response is invalid.");
+        catalogFailures = 0;
+        if (!stopped) publish({ machines: value.machines, remoteWorkspaces: value.workspaces, workspaceLoading: false, workspaceError: "" });
+      } catch (error) {
+        catalogFailures++;
+        if (!stopped) publish({ workspaceLoading: false, workspaceError: error.message || "Could not load workspaces" });
+      }
+    },
+    refresh() { void catalogPoller?.refresh(); void sessionPoller?.refresh(); },
+    search: query => api("chatSearch", { query }),
+    async sessionAction(action, id, value) {
+      const patch = action === 'rename' ? { name: value } : action === 'pin' || action === 'unpin' ? { pinned: action === 'pin' } : { archived: action === 'archive' };
+      const result = await api("chatMetadata", { id, ...patch }); store.update(result); return result;
+    },
+    async removeWorkspace(workspaceId) { await api("workspaceRemove", { workspaceId }); await store.loadWorkspaces(); },
+    async addRemoteWorkspace(machineId, path) {
+      await api("workspaceAdd", { machineId, path });
+      await store.loadWorkspaces();
+    },
+    async addSSHHost(host) {
+      const machine = await api("addMachine", { name: host, host });
+      await store.loadWorkspaces();
+      return machine;
+    },
     select(id) { publish({ selectedId: id }); },
     setDrafts(update) { publish({ drafts: update(snapshot.drafts) }); },
     update(session) {
       revisions.set(session.id, ++generation);
-      const { id, provider, name, cwd, status, createdAt, updatedAt, error } = session;
-      const summary = { id, provider, name, cwd, status, createdAt, updatedAt, error };
+      const { id, provider, name, cwd, machineId, status, createdAt, updatedAt, error, archived, pinned, settingsRevision } = session;
+      const summary = { id, provider, name, cwd, machineId, status, createdAt, updatedAt, error, archived, pinned, settingsRevision };
       publish({ sessions: [summary, ...snapshot.sessions.filter((item) => item.id !== id)] });
     },
     start() {
       if (started) return;
       started = true;
+      catalogPoller = createPoller(() => store.loadWorkspaces(), { delay: () => catalogFailures ? Math.min(30000, 1000 * 2 ** Math.min(catalogFailures - 1, 5)) : 30000 });
+      void catalogPoller.start();
       async function poll() {
         const epoch = generation;
         try {
@@ -38,13 +82,12 @@ export function createWorkspaceStore(api) {
           }
         } catch (error) {
           if (!stopped) publish({ loading: false, error: error?.message || "Could not load external sessions." });
-        } finally {
-          if (!stopped) timer = setTimeout(poll, 3000);
         }
       }
-      void poll();
+      sessionPoller = createPoller(poll, { delay: () => snapshot.sessions.some(s => ['running', 'waiting'].includes(s.status)) ? 3000 : 10000 });
+      void sessionPoller.start();
     },
-    dispose() { stopped = true; clearTimeout(timer); listeners.clear(); store.attempts.clear(); },
+    dispose() { stopped = true; catalogPoller?.stop(); sessionPoller?.stop(); listeners.clear(); store.attempts.clear(); },
   };
   return store;
 }

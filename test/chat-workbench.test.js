@@ -6,14 +6,15 @@ import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
 import vm from "node:vm";
 import React, { act } from "react";
+import { PRIMITIVES_ALIAS } from "./helpers/primitives-alias.js";
 
-const compiled = await build({ stdin: { contents: 'export {default} from "./src/client/ChatWorkbench.jsx"; export {createWorkspaceStore} from "./src/client/workspace-store.js";', resolveDir: process.cwd() }, bundle: true, write: false, format: "cjs", external: ["react"] });
+const compiled = await build({ stdin: { contents: 'export {default} from "./src/client/ChatWorkbench.jsx"; export {createWorkspaceStore} from "./src/client/workspace-store.js";', resolveDir: process.cwd() }, bundle: true, write: false, format: "cjs", external: ["react"], alias: PRIMITIVES_ALIAS });
 const providers = [{ id: "claude", label: "Claude Code", available: true }, { id: "omp", label: "OMP", available: false, reason: "未安装 OMP" }];
 const fixture = (id = "s1") => ({ id, name: `会话 ${id}`, provider: "claude", cwd: "/fixture", status: "idle", messages: [], pendingApprovals: [] });
 const deferred = () => { let resolve; let reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 
 async function mount(api, props = {}) {
-  const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: "http://localhost" });
+  const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: "http://localhost", pretendToBeVisual: true });
   const previous = { window: globalThis.window, document: globalThis.document, IS_REACT_ACT_ENVIRONMENT: globalThis.IS_REACT_ACT_ENVIRONMENT };
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
@@ -30,10 +31,15 @@ async function mount(api, props = {}) {
   await act(async () => store.start());
   await render();
   const buttons = () => [...document.querySelectorAll("button")];
-  const button = (text) => buttons().find((node) => node.textContent.trim() === text);
+  const button = (text) => buttons().find((node) => node.textContent.trim() === text || node.getAttribute("aria-label") === text);
   return { dom, timers, render, button,
     async click(text) { const node = button(text); assert.ok(node, `button ${text} exists`); await act(async () => node.click()); },
     async select(id) { await act(async () => store.select(id)); },
+    async expandTool(name) {
+      const row = [...document.querySelectorAll("[data-disclosure-row]")].find((node) => node.textContent.includes(name));
+      assert.ok(row, `tool ${name} exists`);
+      await act(async () => row.click());
+    },
     async type(selector, value) { const node = document.querySelector(selector); assert.ok(node); const setter = Object.getOwnPropertyDescriptor(node instanceof dom.window.HTMLTextAreaElement ? dom.window.HTMLTextAreaElement.prototype : dom.window.HTMLInputElement.prototype, "value").set; await act(async () => { setter.call(node, value); node.dispatchEvent(new dom.window.Event("input", { bubbles: true })); }); },
     async submit(selector) { await act(async () => document.querySelector(selector).dispatchEvent(new dom.window.Event("submit", { bubbles: true, cancelable: true }))); },
     async tick(delay) { const entry = [...timers].find(([, timer]) => timer.delay === delay); assert.ok(entry, `timer ${delay} scheduled`); timers.delete(entry[0]); await act(async () => entry[1].fn()); },
@@ -59,9 +65,12 @@ test("structured messages, tools, approvals and close confirmation use explicit 
   try {
     await h.select("s1");
     assert.ok(document.body.textContent.includes("真实结构化回复"));
+    assert.ok(!document.body.textContent.includes("tool-result"), "tool rows start collapsed, like DSH");
+    await h.expandTool("read_file");
     assert.ok(document.body.textContent.includes("tool-result"));
+    assert.ok(document.body.textContent.includes('"path": "test.txt"'), "generic tools show their structured input");
     assert.equal(document.querySelector("img"), null, "message HTML is escaped");
-    assert.equal(h.button("Send").disabled, true);
+    assert.equal(h.button("Send message").disabled, true);
     await h.click("Deny");
     assert.equal(calls.find(([method]) => method === "chatApprove")[1].allow, false);
     await h.tick(700);
@@ -90,25 +99,25 @@ test("send failures preserve draft and explicit retry reuses requestId without p
   try {
     await h.select("s1");
     await h.type("textarea", "保留这条消息");
-    assert.equal(h.button("Send").disabled, false);
+    assert.equal(h.button("Send message").disabled, false);
     let textarea = document.querySelector("textarea");
     await act(async () => textarea.dispatchEvent(new h.dom.window.KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true, cancelable: true })));
     assert.equal(sends, 0, "IME enter does not submit");
     await act(async () => textarea.dispatchEvent(new h.dom.window.KeyboardEvent("keydown", { key: "Enter", shiftKey: true, bubbles: true, cancelable: true })));
     assert.equal(sends, 0, "Shift+Enter does not submit");
-    await h.submit(".fleet-chat-composer");
+    await h.submit(".agent-chat-composer");
     assert.equal(textarea.value, "保留这条消息");
-    await h.tick(700);
-    await h.tick(3000);
+    await h.tick(5000);
+    await h.tick(10000);
     assert.equal(sends, 1, "polling never resends prompt");
     await h.render({ key: "return-from-native-session" });
     textarea = document.querySelector("textarea");
     assert.equal(textarea.value, "保留这条消息", "workspace navigation preserves drafts across content mounts");
-    await h.submit(".fleet-chat-composer");
+    await h.submit(".agent-chat-composer");
     assert.equal(attempts[0].requestId, attempts[1].requestId);
     assert.equal(attempts[0].text, attempts[1].text);
     assert.equal(textarea.value, "");
-    assert.equal(h.button("Send").disabled, true);
+    assert.equal(h.button("Send message").disabled, true);
     assert.ok(h.button("Stop generating"));
   } finally { await h.cleanup(); }
 });
@@ -129,8 +138,8 @@ test("accepted sends lock duplicates and preserve newly edited drafts", async ()
   try {
     await h.select("created");
     await h.type("textarea", "第一条");
-    await h.submit(".fleet-chat-composer");
-    await h.submit(".fleet-chat-composer");
+    await h.submit(".agent-chat-composer");
+    await h.submit(".agent-chat-composer");
     assert.equal(calls.filter(([method]) => method === "chatSend").length, 1, "synchronous lock blocks duplicate submissions");
     await h.type("textarea", "下一条草稿");
     state.status = "running";
@@ -155,13 +164,13 @@ test("selected-session request ordering ignores late responses and polling never
   });
   try {
     await h.select("s1");
-    assert.equal([...h.timers.values()].filter((timer) => timer.delay === 700).length, 0, "no next get until current settles");
+    assert.equal([...h.timers.values()].filter((timer) => timer.delay === 5000).length, 0, "no next get until current settles");
     await h.select("s2");
     await act(async () => late.resolve({ ...sessions[0], messages: [{ id: "m1", role: "assistant", text: "过期响应内容" }] }));
     assert.ok(document.body.textContent.includes("第二个会话内容"));
     assert.ok(!document.body.textContent.includes("过期响应内容"));
     assert.equal(firstReads, 1);
-    assert.equal([...h.timers.values()].filter((timer) => timer.delay === 700).length, 1);
+    assert.equal([...h.timers.values()].filter((timer) => timer.delay === 5000).length, 1);
   } finally { await h.cleanup(); }
 });
 
@@ -184,15 +193,159 @@ test("a late ACK after remount cannot discard a newer ambiguous-send receipt", a
   try {
     await h.select("s1");
     await h.type("textarea", "First turn");
-    await h.submit(".fleet-chat-composer");
+    await h.submit(".agent-chat-composer");
     await h.render({ key: "workspace-return" });
     await h.type("textarea", "Second turn");
-    await h.submit(".fleet-chat-composer");
+    await h.submit(".agent-chat-composer");
     await act(async () => firstAck.resolve({ accepted: true }));
     await act(async () => secondAck.reject(Error("Receipt lost after admission")));
     assert.equal(document.querySelector("textarea").value, "Second turn");
-    await h.submit(".fleet-chat-composer");
+    await h.submit(".agent-chat-composer");
     assert.notEqual(attempts[0].requestId, attempts[1].requestId);
     assert.equal(attempts[1].requestId, attempts[2].requestId, "retry must identify the same admitted second turn");
   } finally { await h.cleanup(); }
+});
+
+test("Claude Code sessions dock their latest to-dos, render tools natively, preview approvals and offer a resume command", async () => {
+  const state = {
+    ...fixture("claude"), cwd: "/work/app", providerSessionId: "0f8b2c1e-1111-4222-8333-444455556666", status: "waiting",
+    messages: [
+      { id: "u1", role: "user", text: "Fix the build" },
+      { id: "a1", role: "assistant", text: "", tools: [
+        { id: "t1", name: "TodoWrite", status: "done", input: { todos: [{ content: "Reproduce", status: "completed" }, { content: "Patch", status: "in_progress" }, { content: "Verify", status: "pending" }] } },
+        { id: "t2", name: "Bash", status: "error", isError: true, input: { command: "npm test", description: "Run tests" }, result: JSON.stringify([{ type: "text", text: "Exit code 1\nfailing suite" }]) },
+        { id: "t3", name: "Edit", status: "done", input: { file_path: "/work/app/src/a.js", old_string: "one", new_string: "two" } },
+      ] },
+    ],
+    pendingApprovals: [{ id: "p1", kind: "tool", title: "Allow Bash?", description: "Claude requests permission to use Bash", details: { toolName: "Bash", input: { command: "rm -rf build" } } }],
+  };
+  const h = await mount(async (method) => {
+    if (method === "chatList") return { sessions: [state], providers };
+    if (method === "chatGet") return structuredClone(state);
+    throw Error(method);
+  });
+  try {
+    await h.select("claude");
+    const dock = document.querySelector('section[aria-label="To-dos"]');
+    assert.match(dock.textContent, /1 completed · 1 in progress · 1 pending/);
+    assert.equal(dock.querySelectorAll("li").length, 0, "the dock starts collapsed");
+    await act(async () => dock.querySelector("button").click());
+    assert.deepEqual([...dock.querySelectorAll("li")].map((item) => item.dataset.status), ["completed", "in_progress", "pending"]);
+    const rows = [...document.querySelectorAll("[data-disclosure-row]")].map((row) => row.textContent);
+    assert.ok(rows.some((text) => text.includes("Bash") && text.includes("Run tests") && text.includes("Failed")));
+    assert.ok(rows.some((text) => text.includes("Edit") && text.includes("src/a.js") && !text.includes("/work/app")), "paths are relative to the session");
+    await h.expandTool("Bash");
+    assert.match(document.querySelector("[data-terminal]").textContent, /\$ npm test\nExit code 1\nfailing suite/);
+    await h.expandTool("Edit");
+    assert.match(document.querySelector("[data-diff]").textContent, /src\/a\.js\n-one\n\+two/);
+    const approval = document.querySelector('[aria-label="Pending approval"]');
+    assert.match(approval.textContent, /Claude Code needs your approval/);
+    assert.match(approval.querySelector(".agent-chat-approval-command").textContent, /rm -rf build/);
+    assert.match(approval.textContent, /this tool call only/);
+    assert.ok(h.button("Copy resume command"), "Claude sessions can be resumed in a terminal");
+    assert.match(document.querySelector(".agent-chat-status").textContent, /Waiting for approval/);
+    assert.ok(h.button("Stop generating"));
+    assert.equal(h.button("Send message").disabled, true);
+  } finally { await h.cleanup(); }
+});
+
+test("OMP sessions explain unsupported slash and shell input before sending and show their grant scope", async () => {
+  const state = { ...fixture("omp"), provider: "omp", status: "waiting",
+    pendingApprovals: [{ id: "p1", kind: "permission", title: "Allow tool: bash", description: "ls -la", details: { options: ["Approve", "Deny"], grant: "this call only" } }] };
+  const sends = [];
+  const h = await mount(async (method, payload) => {
+    if (method === "chatList") return { sessions: [state], providers: [{ id: "omp", label: "OMP", available: true }] };
+    if (method === "chatGet") return structuredClone(state);
+    if (method === "chatApprove") { state.status = "idle"; state.pendingApprovals = []; return structuredClone(state); }
+    if (method === "chatSend") { sends.push(payload); return { accepted: true }; }
+    throw Error(method);
+  });
+  try {
+    await h.select("omp");
+    const approval = document.querySelector('[aria-label="Pending approval"]');
+    assert.match(approval.textContent, /OMP needs your approval/);
+    assert.match(approval.textContent, /OMP grants this call only/);
+    assert.equal(h.button("Copy resume command"), undefined, "resume commands are Claude-only");
+    await h.click("Allow once");
+    await h.tick(700);
+    for (const text of ["/model fast", "  !ls -la"]) {
+      await h.type("textarea", text);
+      assert.equal(h.button("Send message").disabled, true);
+      assert.match(document.querySelector('.agent-chat-hint[role="alert"]').textContent, /plain prompts/);
+      await h.submit(".agent-chat-composer");
+    }
+    assert.equal(sends.length, 0, "unsupported input is never sent");
+    await h.type("textarea", "List the files");
+    assert.equal(document.querySelector('.agent-chat-hint[role="alert"]'), null);
+    assert.equal(document.querySelector("textarea").placeholder, "Ask OMP…");
+    await h.submit(".agent-chat-composer");
+    assert.equal(sends[0].text, "List the files");
+  } finally { await h.cleanup(); }
+});
+
+test("Codex renders its plans, command output, patches and resume action in native chat", async () => {
+  const state = { ...fixture("codex"), provider: "codex", providerSessionId: "owned-thread", cwd: "/work/app",
+    messages: [{ id: "a", role: "assistant", text: "Ready to verify", tools: [
+      { id: "plan", name: "update_plan", status: "done", input: { todos: [{ content: "Verify", status: "in_progress" }] } },
+      { id: "cmd", name: "commandExecution", status: "done", input: { command: "npm test" }, result: { content: [{ text: "passed" }], details: { exitCode: 0 } } },
+      { id: "patch", name: "fileChange", status: "done", input: { changes: [{ path: "/work/app/a.js", diff: "-old\n+new" }] } },
+    ] }] };
+  const h = await mount(async method => {
+    if (method === "chatList") return { sessions: [state], providers: [{ id: "codex", available: true }] };
+    if (method === "chatGet") return structuredClone(state);
+    throw Error(method);
+  });
+  try {
+    await h.select("codex");
+    assert.equal(document.querySelector("textarea").placeholder, "Ask Codex…");
+    assert.ok(h.button("Copy resume command"));
+    assert.match(document.querySelector('[aria-label="To-dos"]').textContent, /1 in progress/);
+    await h.expandTool("commandExecution");
+    assert.match(document.querySelector('[data-terminal]').textContent, /npm test\npassed/);
+    await h.expandTool("fileChange");
+    assert.equal(document.querySelector('.agent-chat-patch-path').textContent, "a.js");
+    assert.match(document.querySelector('.agent-chat-patch [data-markdown]').textContent, /-old\n\+new/);
+  } finally { await h.cleanup(); }
+});
+
+test("model/effort/YOLO controls save actual session settings, reset to CLI, and lock during turns", async () => {
+  let state={...fixture('settings'),provider:'codex',settings:{model:null,effort:null,permissions:'cli'}};
+  const calls=[];
+  const h=await mount(async(method,payload)=>{
+    if(method==='chatList')return{sessions:[state],providers:[{id:'codex',available:true,capabilities:{settings:true}}]};
+    if(method==='chatGet')return structuredClone(state);
+    if(method==='chatOptions')return{defaults:{model:'cli-model',effort:'medium'},models:[{id:'model-a',label:'Model A',efforts:['low','high']}],efforts:['low','high'],permissions:[{id:'cli',label:'Follow CLI'},{id:'yolo',label:'Full access · YOLO'}]};
+    if(method==='chatConfigure'){calls.push(payload);state={...state,settings:{...state.settings,...payload.patch},settingsRevision:(state.settingsRevision||0)+1};return structuredClone(state);}
+    throw Error(method);
+  });
+  try{
+    await h.select('settings');await h.click('Model');
+    const model=[...document.querySelectorAll('.agent-chat-settings-options button')].find(b=>b.textContent.includes('Model A'));
+    await act(async()=>model.click());assert.equal(calls.at(-1).patch.model,'model-a');assert.equal(calls.at(-1).patch.effort,null);
+    await h.click('Reasoning effort');await h.click('high');assert.equal(calls.at(-1).patch.effort,'high');
+    await h.click('Permission mode');await h.click('Full access · YOLO');assert.equal(calls.at(-1).patch.permissions,'yolo');
+    await h.click('Model');const inherit=document.querySelector('.agent-chat-settings-options button');await act(async()=>inherit.click());assert.equal(calls.at(-1).patch.model,null);assert.equal(calls.at(-1).patch.effort,null);
+    state={...state,status:'running'};await h.tick(5000);assert.equal(h.button('Model').disabled,true);assert.equal(h.button('Permission mode').disabled,true);
+  }finally{await h.cleanup();}
+});
+
+test('a stale detail response cannot overwrite saved settings and the UI reports persistence',async()=>{
+  let state={...fixture('revision'),provider:'codex',settings:{model:null,effort:null,permissions:'cli'},settingsRevision:0};
+  const stale=deferred();let reads=0;
+  const h=await mount(async(method,payload)=>{
+    if(method==='chatList')return{sessions:[state],providers:[{id:'codex',available:true,capabilities:{settings:true}}]};
+    if(method==='chatGet'){reads++;return reads===2?stale.promise:structuredClone(state);}
+    if(method==='chatOptions')return{models:[],efforts:['low'],permissions:[{id:'cli',label:'Follow CLI'},{id:'read-only',label:'Read only'}]};
+    if(method==='chatConfigure'){assert.equal(payload.expectedRevision,0);assert.equal(payload.settings,undefined);state={...state,settings:{...state.settings,...payload.patch},settingsRevision:1};return structuredClone(state);}
+    throw Error(method);
+  });
+  try{
+    await h.select('revision');const old=structuredClone(state);
+    // Start an old server snapshot, then commit settings before that read resolves.
+    const timer=[...h.timers].find(([,v])=>v.delay===5000);h.timers.delete(timer[0]);let pending;
+    await act(async()=>{pending=timer[1].fn();});
+    await h.click('Permission mode');await h.click('Read only');assert.match(document.body.textContent,/Settings saved/);
+    await act(async()=>{stale.resolve(old);await pending;});
+    await h.click('Permission mode');assert.equal([...document.querySelectorAll('.agent-chat-settings-options button')].find(b=>b.textContent==='Read only').getAttribute('aria-pressed'),'true');
+  }finally{await h.cleanup();}
 });

@@ -244,6 +244,13 @@ Apache License
 
 const STYLE = { display: "inline-block", flexShrink: 0, verticalAlign: "middle" };
 const LOGOS = {
+  // Original terminal glyph for Codex; inherits the host foreground color.
+  codex: {
+    label: "Codex", viewBox: "0 0 24 24",
+    glyph: <g fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2.5" y="4" width="19" height="16" rx="4" /><path d="m7 9 3 3-3 3m6 0h4" />
+    </g>,
+  },
   native: {
     label: "DeepSeek Harness",
     viewBox: "0 0 23.16 17.04",
@@ -268,23 +275,28 @@ const LOGOS = {
   },
 };
 
-/** Offline upstream glyphs, sharing the host's React and foreground color. */
-export default function AgentLogo({ provider = "native", size = 16 }) {
+/**
+ * Offline upstream glyphs, sharing the host's React and foreground color.
+ * `decorative` marks are hidden from assistive technology when nearby text
+ * already names the agent.
+ */
+export default function AgentLogo({ provider = "native", size = 16, decorative = false }) {
   const logo = LOGOS[provider] || LOGOS.native;
+  const semantics = decorative ? { "aria-hidden": "true" } : { role: "img", "aria-label": logo.label };
   return <svg
     xmlns="http://www.w3.org/2000/svg"
     className="agent-logo"
+    data-agent={provider}
     width={size}
     height={size}
     viewBox={logo.viewBox}
     preserveAspectRatio="xMidYMid meet"
     fill="currentColor"
-    role="img"
-    aria-label={logo.label}
     focusable="false"
     style={STYLE}
+    {...semantics}
   >
-    <title>{logo.label}</title>
+    {!decorative && <title>{logo.label}</title>}
     {logo.glyph}
   </svg>;
 }

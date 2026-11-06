@@ -1,3 +1,4 @@
+import { legacySettings } from './settings.js';
 const OUTPUT_LIMIT = 32_768;
 
 function bounded(value) {
@@ -22,8 +23,9 @@ async function cancellable(value, signal) {
 }
 
 /** Official Agent SDK 0.3.318; loaded only when a real turn is sent. */
-export function createClaudeProvider({ queryFn, executable } = {}) {
+export function createClaudeProvider({ queryFn, executable, execution } = {}) {
   return async function createAdapter({ session, emit, requestApproval, signal }) {
+    const settings = session.settings || legacySettings('claude');
     let providerSessionId = session.providerSessionId;
     let active;
     let closed = false;
@@ -101,8 +103,12 @@ export function createClaudeProvider({ queryFn, executable } = {}) {
               ...(executable ? { pathToClaudeCodeExecutable: executable } : {}),
               abortController: turn.controller,
               includePartialMessages: true,
-              permissionMode: 'default',
-              settingSources: [],
+              ...(settings.model ? { model: settings.model } : {}),
+              ...(settings.effort ? { effort: settings.effort } : {}),
+              ...(settings.permissions !== 'cli' ? { permissionMode: settings.permissions } : {}),
+              ...(settings.permissions === 'bypassPermissions' ? { allowDangerouslySkipPermissions: true } : {}),
+              settingSources: ['user', 'project', 'local'],
+              ...(execution?.remote ? { spawnClaudeCodeProcess: options => execution.spawn(executable, options.args, { cwd: session.cwd, signal: options.signal }) } : {}),
               canUseTool: async (toolName, input, context = {}) => {
                 const deny = (message) => ({ behavior: 'deny', message });
                 if (toolName === 'AskUserQuestion' || context.requiresUserInteraction) {
@@ -139,7 +145,7 @@ export function createClaudeProvider({ queryFn, executable } = {}) {
             if (next.done) break;
             const message = next.value;
             if (!message || message.parent_tool_use_id || message.agent_id || message.agentId) continue;
-            if (message.type === 'system' && message.subtype === 'init') captureSession(message);
+            if (message.type === 'system' && message.subtype === 'init') { captureSession(message); output('provider.settings', { model: message.model, effort: message.effort, permissions: message.permissionMode }); }
             if (message.type === 'result') {
               captureSession(message);
               resultSeen = true;

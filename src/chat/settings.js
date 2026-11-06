@@ -1,0 +1,49 @@
+// Shared presentation/validation contract. Values map directly to CLI options.
+export const EFFORTS = {
+  codex: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+  claude: ['low', 'medium', 'high', 'xhigh', 'max'],
+  omp: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'auto'],
+};
+export const PERMISSIONS = {
+  codex: [
+    { id: 'cli', label: 'Follow CLI', description: 'Use Codex configuration and policy requirements.' },
+    { id: 'read-only', label: 'Read only', description: 'Read-only sandbox · ask on request.' },
+    { id: 'workspace-write', label: 'Workspace write', description: 'Workspace sandbox · ask on request.' },
+    { id: 'safe', label: 'Ask before running', description: 'Workspace sandbox · untrusted approval policy.' },
+    { id: 'yolo', label: 'Full access · YOLO', description: 'No sandbox or approval prompts; matches --dangerously-bypass-approvals-and-sandbox.' },
+  ],
+  claude: [
+    { id: 'cli', label: 'Follow CLI', description: 'Use Claude Code settings and managed policy.' },
+    { id: 'default', label: 'Default', description: 'Standard Claude Code permission checks.' },
+    { id: 'acceptEdits', label: 'Accept edits', description: 'Automatically approve file edits.' },
+    { id: 'plan', label: 'Plan', description: 'Plan without making changes.' },
+    { id: 'auto', label: 'Auto', description: 'Use Claude Code’s automatic permission classifier.' },
+    { id: 'dontAsk', label: 'Don’t ask', description: 'Deny operations that need approval.' },
+    { id: 'bypassPermissions', label: 'Bypass permissions · YOLO', description: 'Matches --dangerously-skip-permissions; managed policy still applies.' },
+  ],
+  omp: [
+    { id: 'cli', label: 'Follow CLI', description: 'Use tools.approvalMode from OMP configuration.' },
+    { id: 'always-ask', label: 'Always ask', description: 'Automatically allow read-only tools; ask for other calls.' },
+    { id: 'always-ask-cached', label: 'Ask and remember', description: 'Use native cached approval rules; this UI only grants individual calls.' },
+    { id: 'write', label: 'Workspace write', description: 'Automatically allow reads and workspace writes.' },
+    { id: 'yolo', label: 'YOLO', description: 'Automatically allow all tool tiers; explicit policies may still ask or block.' },
+  ],
+};
+export const DEFAULT_SETTINGS = Object.freeze({ model: null, effort: null, permissions: 'cli' });
+export function legacySettings(provider) {
+  return { ...DEFAULT_SETTINGS, permissions: { codex: 'safe', claude: 'default', omp: 'always-ask' }[provider] || 'cli' };
+}
+export function validateSettings(provider, value) {
+  const invalid = () => { throw Object.assign(new Error('Invalid agent settings'), { code: 'INVALID_INPUT' }); };
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(k => !['model', 'effort', 'permissions'].includes(k))) invalid();
+  const result = { ...DEFAULT_SETTINGS, ...value };
+  if (result.model !== null && (typeof result.model !== 'string' || !result.model.trim() || result.model.length > 256 || /[\x00-\x1f\x7f]/.test(result.model) || result.model.startsWith('-'))) invalid();
+  if (result.effort !== null && !EFFORTS[provider]?.includes(result.effort)) invalid();
+  if (!PERMISSIONS[provider]?.some(item => item.id === result.permissions)) invalid();
+  return result;
+}
+export function codexPermissionOptions(mode) {
+  if (mode === 'cli') return {};
+  return { sandbox: mode === 'yolo' ? 'danger-full-access' : mode === 'read-only' ? 'read-only' : 'workspace-write',
+    approvalPolicy: mode === 'yolo' ? 'never' : mode === 'safe' ? 'untrusted' : 'on-request', approvalsReviewer: 'user' };
+}

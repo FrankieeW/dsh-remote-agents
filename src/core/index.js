@@ -174,7 +174,7 @@ export class FleetManager {
         !UUID.test(project.id) ||
         projects.has(project.id) ||
         !ids.has(project.machineId) ||
-        project.source !== "herdr" ||
+        !["herdr", "workspace"].includes(project.source) ||
         typeof project.name !== "string" ||
         !project.name.length ||
         project.name.length > 100 ||
@@ -332,6 +332,29 @@ export class FleetManager {
       }),
       { readOnly },
     );
+  }
+  namespace() { return this._transaction(() => this.state.namespace, { readOnly: true }); }
+  addWorkspace({ machineId, cwd, name } = {}) {
+    return this._transaction(() => {
+      this._machine(machineId);
+      text(cwd, "workspace directory", 4096);
+      if (!isAbsolute(cwd)) fail("Workspace directory must be absolute");
+      if (name !== undefined) text(name, "workspace name", 100);
+      const existing = this.state.projects.find(p => p.machineId === machineId && p.cwd === cwd);
+      if (existing) return existing;
+      const project = { id: randomUUID(), machineId, cwd, name: name || basename(cwd) || cwd, source: "workspace" };
+      this.state.projects.push(project);
+      return project;
+    });
+  }
+  removeWorkspace(workspaceId) {
+    return this._transaction(() => {
+      const project = this.state.projects.find(p => p.id === workspaceId);
+      if (!project) throw new FleetError("NOT_FOUND", "Workspace not found");
+      if (this.state.agents.some(a => a.projectId === workspaceId)) throw new FleetError("BUSY", "This workspace has managed terminals. Stop and remove them before removing the workspace.");
+      this.state.projects = this.state.projects.filter(p => p.id !== workspaceId);
+      return { removed: true };
+    });
   }
   previewHerdr(input = {}) {
     return this._transaction(() => buildHerdrPreview(input, this.state), {

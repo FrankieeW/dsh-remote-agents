@@ -1,12 +1,17 @@
 {
   "name": "dsh-remote-agents",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "bin": {
     "dsh-remote-agents-import": "./lib/import-cli.js"
   },
   "description": "Local and SSH agent fleet workbench for DeepSeek Harness",
   "type": "module",
   "license": "MIT",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "tag": "latest"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/FrankieeW/dsh-remote-agents.git"
@@ -39,7 +44,9 @@
     "build": "node scripts/build.mjs",
     "test": "node --test",
     "check": "npm test && npm run build",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "test:package": "node scripts/verify-package.mjs",
+    "test:smoke": "DSH_FLEET_SMOKE=1 node --test test/local-smoke.test.js"
   },
   "dsh": {
     "manifestVersion": 1,

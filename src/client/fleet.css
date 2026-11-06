@@ -1,8 +1,6 @@
-/* Theme aliases are supplied by dsh-client-ui-theme on body, including dark mode.
-   Keep every rule inside the workbench or its native-session entry/dialog. */
-.fleet-page,
-.fleet-session-picker,
-.fleet-session-dialog {
+/* Machines & projects page. Theme aliases are supplied by dsh-client-ui-theme on body, including dark mode.
+   Keep every rule inside the page; conversations use chat.css and the sidebar uses workspace.css. */
+.fleet-page {
   --fleet-bg: var(--dsw-alias-bg-base, Canvas);
   --fleet-panel: var(--dsw-alias-bg-layer-1, Canvas);
   --fleet-elevated: var(--dsw-alias-bg-layer-2, Canvas);
@@ -31,22 +29,22 @@
   padding-left: var(--dsh-frame-leading-clearance, 0px);
   background: var(--fleet-bg);
 }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) * { box-sizing: border-box; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) :is(button, input, select, textarea) { font: inherit; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) button {
+:where(.fleet-page) * { box-sizing: border-box; }
+:where(.fleet-page) :is(button, input, select, textarea) { font: inherit; }
+:where(.fleet-page) button {
   cursor: pointer;
   color: inherit;
   background: transparent;
   border: 0;
 }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) :is(button, input, select, textarea):disabled { cursor: not-allowed; opacity: .5; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) :focus-visible {
+:where(.fleet-page) :is(button, input, select, textarea):disabled { cursor: not-allowed; opacity: .5; }
+:where(.fleet-page) :focus-visible {
   outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--fleet-accent));
   outline-offset: 2px;
 }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) :is(h1, h2, h3, p) { margin: 0; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) :is(h1, h2, h3) { font-size: 1em; font-weight: 600; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-button {
+:where(.fleet-page) :is(h1, h2, h3, p) { margin: 0; }
+:where(.fleet-page) :is(h1, h2, h3) { font-size: 1em; font-weight: 600; }
+:where(.fleet-page) .fleet-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -61,27 +59,27 @@
   white-space: nowrap;
   transition: background .12s, border-color .12s;
 }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-button:hover:not(:disabled) { background: var(--fleet-hover); border-color: var(--fleet-strong-line); }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-button--primary { background: var(--dsw-alias-button-primary-fill, var(--fleet-text)); border-color: transparent; color: var(--dsw-alias-label-primary-foreground, var(--fleet-bg)); font-weight: 500; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-button--primary:hover:not(:disabled) { background: var(--dsw-alias-button-primary-hover, var(--fleet-muted)); border-color: transparent; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-button--danger { color: var(--fleet-error); background: transparent; border-color: color-mix(in srgb, var(--fleet-error) 40%, var(--fleet-line)); }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-button--danger:hover:not(:disabled) { background: color-mix(in srgb, var(--fleet-error) 8%, var(--fleet-panel)); }
+:where(.fleet-page) .fleet-button:hover:not(:disabled) { background: var(--fleet-hover); border-color: var(--fleet-strong-line); }
+:where(.fleet-page) .fleet-button--primary { background: var(--dsw-alias-button-primary-fill, var(--fleet-text)); border-color: transparent; color: var(--dsw-alias-label-primary-foreground, var(--fleet-bg)); font-weight: 500; }
+:where(.fleet-page) .fleet-button--primary:hover:not(:disabled) { background: var(--dsw-alias-button-primary-hover, var(--fleet-muted)); border-color: transparent; }
+:where(.fleet-page) .fleet-button--danger { color: var(--fleet-error); background: transparent; border-color: color-mix(in srgb, var(--fleet-error) 40%, var(--fleet-line)); }
+:where(.fleet-page) .fleet-button--danger:hover:not(:disabled) { background: color-mix(in srgb, var(--fleet-error) 8%, var(--fleet-panel)); }
 .fleet-page .fleet-topbar { min-height: 58px; padding: 10px 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--fleet-line); }
 .fleet-page .fleet-brand { display: flex; align-items: center; gap: 9px; }
 .fleet-page .fleet-logo { display: grid; place-items: center; width: 28px; height: 28px; color: var(--fleet-muted); font-size: 1.5em; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-eyebrow { display: block; color: var(--fleet-caption); font-size: .72em; letter-spacing: .04em; font-weight: 400; margin-bottom: 3px; }
+:where(.fleet-page) .fleet-eyebrow { display: block; color: var(--fleet-caption); font-size: .72em; letter-spacing: .04em; font-weight: 400; margin-bottom: 3px; }
 .fleet-page .fleet-brand .fleet-eyebrow { display: none; }
 .fleet-page .fleet-brand h1 { font-size: 1em; }
 .fleet-page .fleet-toolbar { display: flex; align-items: center; gap: 12px; }
 .fleet-page .fleet-sync { color: var(--fleet-caption); font-size: .8em; font-variant-numeric: tabular-nums; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-toggle { display: flex; flex-direction: row; align-items: center; gap: 6px; color: var(--fleet-muted); font-size: .85em; white-space: nowrap; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) input:is([type="checkbox"], [type="radio"]) { accent-color: var(--fleet-accent); width: 14px; height: 14px; flex: none; padding: 0; margin: 0; }
+:where(.fleet-page) .fleet-toggle { display: flex; flex-direction: row; align-items: center; gap: 6px; color: var(--fleet-muted); font-size: .85em; white-space: nowrap; }
+:where(.fleet-page) input:is([type="checkbox"], [type="radio"]) { accent-color: var(--fleet-accent); width: 14px; height: 14px; flex: none; padding: 0; margin: 0; }
 .fleet-page .fleet-workspace { display: grid; grid-template-columns: 208px minmax(300px, 1fr) minmax(300px, 360px); min-height: calc(100% - 98px); }
 .fleet-page .fleet-sidebar { background: var(--dsw-specific-sidebar-fill, var(--fleet-panel)); border-right: 1px solid var(--fleet-line); padding: 16px 10px; display: flex; flex-direction: column; gap: 9px; min-width: 0; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+:where(.fleet-page) .fleet-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .fleet-page .fleet-sidebar > .fleet-section-heading { padding: 0 8px; }
 .fleet-page .fleet-section-heading h2 { font-size: .85em; color: var(--fleet-muted); }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-count { display: inline-grid; place-items: center; min-width: 20px; padding: 1px 6px; border-radius: var(--dsw-radius-xs, 4px); font-size: .78em; font-weight: 400; background: var(--fleet-selected); color: var(--fleet-muted); }
+:where(.fleet-page) .fleet-count { display: inline-grid; place-items: center; min-width: 20px; padding: 1px 6px; border-radius: var(--dsw-radius-xs, 4px); font-size: .78em; font-weight: 400; background: var(--fleet-selected); color: var(--fleet-muted); }
 .fleet-page .fleet-machine-list { display: flex; flex-direction: column; gap: 4px; }
 .fleet-page .fleet-machine { display: flex; align-items: center; gap: 8px; text-align: left; width: 100%; padding: 9px 8px; border-radius: var(--fleet-radius); }
 .fleet-page .fleet-machine > span:nth-child(2) { min-width: 0; flex: 1; }
@@ -147,34 +145,34 @@
 .fleet-page .fleet-input-form > .fleet-muted { margin-top: 8px; }
 .fleet-page .fleet-danger-actions { display: flex; gap: 8px; padding: 14px 14px 0; margin-top: auto; }
 .fleet-page .fleet-danger-actions .fleet-button { font-size: .8em; flex: 1; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { display: block; width: 100%; min-width: 0; padding: 7px 9px; background: var(--dsw-specific-input-major, var(--fleet-bg)); color: var(--fleet-text); border: 1px solid var(--fleet-strong-line); border-radius: var(--fleet-radius); }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) textarea { resize: vertical; max-height: 260px; min-height: 70px; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) :is(input, textarea)::placeholder { color: var(--fleet-caption); }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-form { display: flex; flex-direction: column; gap: 12px; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-form label { display: flex; flex-direction: column; gap: 6px; color: var(--fleet-muted); font-size: .85em; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-form-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+:where(.fleet-page) :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { display: block; width: 100%; min-width: 0; padding: 7px 9px; background: var(--dsw-specific-input-major, var(--fleet-bg)); color: var(--fleet-text); border: 1px solid var(--fleet-strong-line); border-radius: var(--fleet-radius); }
+:where(.fleet-page) textarea { resize: vertical; max-height: 260px; min-height: 70px; }
+:where(.fleet-page) :is(input, textarea)::placeholder { color: var(--fleet-caption); }
+:where(.fleet-page) .fleet-form { display: flex; flex-direction: column; gap: 12px; }
+:where(.fleet-page) .fleet-form label { display: flex; flex-direction: column; gap: 6px; color: var(--fleet-muted); font-size: .85em; }
+:where(.fleet-page) .fleet-form-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
 .fleet-page .fleet-launch, .fleet-page .fleet-import { padding: 16px; background: var(--fleet-panel); border: 1px solid var(--fleet-line); border-radius: var(--dsw-radius-md, 12px); margin-bottom: 20px; }
 .fleet-page .fleet-launch > .fleet-button { align-self: flex-end; }
 .fleet-page .fleet-machine-form { padding: 10px 3px; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-muted { font-size: .8em; color: var(--fleet-caption); line-height: 1.6; }
+:where(.fleet-page) .fleet-muted { font-size: .8em; color: var(--fleet-caption); line-height: 1.6; }
 .fleet-page .fleet-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 240px; text-align: center; padding: 28px 20px; }
 .fleet-page .fleet-empty-symbol { color: var(--fleet-caption); font-size: 2em; margin-bottom: 12px; }
 .fleet-page .fleet-empty strong { font-weight: 500; font-size: 1em; }
 .fleet-page .fleet-empty p { font-size: .85em; color: var(--fleet-caption); max-width: 300px; margin-top: 8px; line-height: 1.7; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-alert { margin: 12px 16px 0; padding: 10px 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--fleet-elevated); border: 1px solid var(--fleet-line); border-radius: var(--fleet-radius); color: var(--fleet-text); font-size: .85em; overflow-wrap: anywhere; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-alert > button:last-child { margin-left: auto; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-alert--error { background: color-mix(in srgb, var(--fleet-error) 6%, var(--fleet-panel)); border-color: color-mix(in srgb, var(--fleet-error) 35%, var(--fleet-line)); color: var(--fleet-error); }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-alert small { font-size: .9em; }
+:where(.fleet-page) .fleet-alert { margin: 12px 16px 0; padding: 10px 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--fleet-elevated); border: 1px solid var(--fleet-line); border-radius: var(--fleet-radius); color: var(--fleet-text); font-size: .85em; overflow-wrap: anywhere; }
+:where(.fleet-page) .fleet-alert > button:last-child { margin-left: auto; }
+:where(.fleet-page) .fleet-alert--error { background: color-mix(in srgb, var(--fleet-error) 6%, var(--fleet-panel)); border-color: color-mix(in srgb, var(--fleet-error) 35%, var(--fleet-line)); color: var(--fleet-error); }
+:where(.fleet-page) .fleet-alert small { font-size: .9em; }
 .fleet-page .fleet-output-error { padding: 10px 14px; color: var(--fleet-error); background: color-mix(in srgb, var(--fleet-error) 6%, var(--fleet-panel)); font-size: .85em; overflow-wrap: anywhere; }
 .fleet-page .fleet-output-error small { display: block; margin-top: 5px; }
 .fleet-page .fleet-truncated { padding: 6px 14px; color: var(--fleet-warn); font-size: .8em; background: color-mix(in srgb, var(--fleet-warn) 6%, var(--fleet-panel)); }
 .fleet-page .fleet-footer { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 18px; border-top: 1px solid var(--fleet-line); font-size: .72em; color: var(--fleet-caption); }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-modal-backdrop { position: fixed; inset: 0; background: var(--dsw-alias-bg-mask-1, color-mix(in srgb, var(--fleet-text) 25%, transparent)); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-modal, .fleet-session-dialog { width: 440px; max-width: 100%; max-height: calc(100dvh - 40px); overflow: auto; background: var(--fleet-panel); border: 1px solid var(--fleet-line); border-radius: var(--dsw-radius-lg, 16px); padding: 22px; box-shadow: var(--dsw-elevation-prominent, none); }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-modal-icon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: var(--fleet-radius); color: var(--fleet-error); background: color-mix(in srgb, var(--fleet-error) 8%, var(--fleet-panel)); font-size: 1.2em; margin-bottom: 12px; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-modal h2 { font-size: 1.1em; overflow-wrap: anywhere; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-modal p { margin: 10px 0 20px; color: var(--fleet-muted); font-size: .9em; line-height: 1.6; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-modal > div { display: flex; justify-content: flex-end; gap: 10px; }
+:where(.fleet-page) .fleet-modal-backdrop { position: fixed; inset: 0; background: var(--dsw-alias-bg-mask-1, color-mix(in srgb, var(--fleet-text) 25%, transparent)); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+:where(.fleet-page) .fleet-modal { width: 440px; max-width: 100%; max-height: calc(100dvh - 40px); overflow: auto; background: var(--fleet-panel); border: 1px solid var(--fleet-line); border-radius: var(--dsw-radius-lg, 16px); padding: 22px; box-shadow: var(--dsw-elevation-prominent, none); }
+:where(.fleet-page) .fleet-modal-icon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: var(--fleet-radius); color: var(--fleet-error); background: color-mix(in srgb, var(--fleet-error) 8%, var(--fleet-panel)); font-size: 1.2em; margin-bottom: 12px; }
+:where(.fleet-page) .fleet-modal h2 { font-size: 1.1em; overflow-wrap: anywhere; }
+:where(.fleet-page) .fleet-modal p { margin: 10px 0 20px; color: var(--fleet-muted); font-size: .9em; line-height: 1.6; }
+:where(.fleet-page) .fleet-modal > div { display: flex; justify-content: flex-end; gap: 10px; }
 .fleet-page .fleet-import-safety { color: var(--fleet-muted); font-size: .85em; line-height: 1.65; padding-bottom: 14px; }
 .fleet-page .fleet-import input[type="file"] { font-size: .9em; padding: 8px; overflow: hidden; }
 .fleet-page .fleet-import input[type="file"]::file-selector-button { background: var(--fleet-selected); color: var(--fleet-text); border: 0; border-radius: var(--dsw-radius-xs, 4px); padding: 5px 7px; margin-right: 7px; cursor: pointer; font: inherit; }
@@ -195,96 +193,6 @@
 .fleet-page .fleet-import-items .fleet-count { flex: none; white-space: nowrap; }
 .fleet-page .fleet-import-confirm { display: flex; align-items: flex-start; gap: 8px; margin: 18px 0 12px; color: var(--fleet-muted); font-size: .85em; line-height: 1.6; }
 .fleet-page .fleet-import-confirm input { margin-top: 3px; }
-/* Native new-session option: no fixed positioning or independent brand surface. */
-.fleet-session-picker { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; max-width: 100%; }
-.fleet-session-dialog { width: 560px; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-runtime-options { display: grid; grid-template-columns: 1fr; gap: 8px; margin: 14px 0; padding: 0; border: 0; min-width: 0; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-runtime-option { display: flex; flex-direction: row; align-items: flex-start; gap: 10px; width: 100%; min-width: 0; padding: 12px; border: 1px solid var(--fleet-line); border-radius: var(--fleet-radius); color: var(--fleet-text); background: transparent; text-align: left; cursor: pointer; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-runtime-option:hover { background: var(--fleet-hover); }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-runtime-option:is(.is-selected, [aria-pressed="true"], [aria-checked="true"]), :where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-runtime-option:has(input:checked) { border-color: var(--fleet-accent); background: var(--fleet-selected); }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-runtime-option:has(input:disabled) { cursor: not-allowed; opacity: .55; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-runtime-option input { margin-top: 3px; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-runtime-option > :not(input) { min-width: 0; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-runtime-title { display: block; font-size: 1em; font-weight: 500; overflow-wrap: anywhere; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-runtime-detail { display: block; font-size: .85em; color: var(--fleet-caption); margin-top: 3px; line-height: 1.55; overflow-wrap: anywhere; }
-.fleet-session-dialog .fleet-alert { margin: 12px 0; }
-.fleet-session-dialog .fleet-section-heading { margin-bottom: 14px; }
-/* Shared chat surfaces: semantic classes only; protocol and behavior stay in JSX. */
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-chat-transcript {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  min-width: 0;
-  min-height: 0;
-  overflow: auto;
-  padding: 20px clamp(12px, 3vw, 32px);
-  overscroll-behavior: contain;
-  background: var(--fleet-bg);
-}
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-chat-message {
-  width: 100%;
-  max-width: 760px;
-  min-width: 0;
-  margin-inline: auto;
-  color: var(--fleet-text);
-  line-height: 1.65;
-  overflow-wrap: anywhere;
-}
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-chat-message p + p { margin-top: .8em; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-chat-message pre {
-  max-width: 100%;
-  overflow: auto;
-  padding: 12px;
-  border-radius: var(--fleet-radius);
-  background: var(--dsw-alias-markdown-code-block, var(--fleet-elevated));
-  font-family: var(--ds-font-family-code, monospace);
-  font-size: var(--dsh-code-font-size, .85em);
-  white-space: pre;
-}
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-chat-message code { font-family: var(--ds-font-family-code, monospace); }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-chat-user {
-  width: fit-content;
-  max-width: min(85%, 680px);
-  align-self: flex-end;
-  margin-inline: auto 0;
-  padding: 10px 14px;
-  border-radius: var(--dsw-radius-md, 12px);
-  background: var(--fleet-selected);
-  white-space: pre-wrap;
-}
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-chat-assistant { background: transparent; padding-block: 2px; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-chat-tool {
-  padding: 10px 12px;
-  border: 1px solid var(--fleet-line);
-  border-radius: var(--fleet-radius);
-  background: var(--fleet-panel);
-  color: var(--fleet-muted);
-  font-size: .85em;
-}
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-chat-tool summary { cursor: pointer; color: var(--fleet-text); }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-chat-approval {
-  padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--fleet-warn) 35%, var(--fleet-line));
-  border-radius: var(--fleet-radius);
-  background: var(--dsw-alias-state-warn-tertiary, var(--fleet-panel));
-  color: var(--fleet-text);
-}
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-chat-approval .fleet-button { margin-top: 10px; margin-right: 8px; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-chat-composer {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: calc(100% - 24px);
-  max-width: 760px;
-  min-width: 0;
-  margin: 12px auto;
-  padding: 12px;
-  border: 1px solid var(--fleet-strong-line);
-  border-radius: var(--dsw-radius-lg, 16px);
-  background: var(--dsw-specific-input-major, var(--fleet-panel));
-}
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-chat-composer textarea { border: 0; background: transparent; min-height: 68px; max-height: 240px; }
-:where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-chat-composer > .fleet-button { align-self: flex-end; }
 @media (min-width: 1600px) {
   .fleet-page .fleet-workspace { grid-template-columns: 232px minmax(440px, 1fr) 420px; }
   .fleet-page .fleet-projects { padding: 24px 28px; }
@@ -316,14 +224,13 @@
   .fleet-page .fleet-main-heading { flex-wrap: wrap; }
   .fleet-page .fleet-project-heading { flex-wrap: wrap; }
   .fleet-page .fleet-project-heading > div { flex: 1; }
-  :where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-form-grid { grid-template-columns: 1fr; }
+  :where(.fleet-page) .fleet-form-grid { grid-template-columns: 1fr; }
   .fleet-page .fleet-inspector { width: 100%; }
   .fleet-page .fleet-agent-grid { grid-template-columns: 1fr; }
   .fleet-page .fleet-empty { min-height: 200px; }
   .fleet-page .fleet-footer { padding: 10px 12px; }
-  :where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) .fleet-modal-backdrop { padding: 12px; }
-  .fleet-session-dialog { max-height: calc(100dvh - 24px); padding: 18px; }
+  :where(.fleet-page) .fleet-modal-backdrop { padding: 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  :where(.fleet-page, .fleet-session-picker, .fleet-session-dialog) * { transition: none !important; scroll-behavior: auto !important; }
+  :where(.fleet-page) * { transition: none !important; scroll-behavior: auto !important; }
 }

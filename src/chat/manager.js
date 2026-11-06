@@ -1,15 +1,17 @@
+import { exportConversation } from './export.js';
+import { DEFAULT_SETTINGS, legacySettings, validateSettings } from './settings.js';
 import { randomUUID, createHash } from 'node:crypto';
 import { mkdir, open, readFile, rename, unlink, stat } from 'node:fs/promises';
 import { resolve, dirname, isAbsolute } from 'node:path';
 
-const PROVIDERS = new Set(['claude', 'omp']);
+const PROVIDERS = new Set(['claude', 'omp', 'codex']);
 const STATUSES = new Set(['idle', 'running', 'waiting', 'error', 'interrupted', 'closed']);
 const TEXT_LIMIT = 65536;
 const VALUE_LIMIT = 4096;
 const MAX_TOOLS = 16;
 const MAX_MESSAGES = 200;
 const MAX_REQUESTS = 2048;
-const MAX_SESSIONS = 32;
+const MAX_SESSIONS = 256;
 const MAX_FILE = 16 * 1024 * 1024;
 const copy = value => JSON.parse(JSON.stringify(value));
 const now = () => new Date().toISOString();
@@ -35,13 +37,15 @@ const hash = text => createHash('sha256').update(text).digest('hex');
 
 /** One live manager owns a statePath. Provider runtimes and approvals never enter disk state. */
 export class ChatManager {
-  constructor({ statePath, providers = {}, saveDebounceMs = 50, shutdownTimeoutMs = 1000 } = {}) {
+  constructor({ statePath, providers = {}, getOptions, validateDirectory, saveDebounceMs = 50, shutdownTimeoutMs = 1000 } = {}) {
     if (!validText(statePath, 4096)) throw fault('INVALID_INPUT', 'statePath is required');
     if (!providers || typeof providers !== 'object') throw fault('INVALID_INPUT', 'Invalid providers');
     if (!Number.isInteger(saveDebounceMs) || saveDebounceMs < 0 || saveDebounceMs > 5000) throw fault('INVALID_INPUT', 'Invalid saveDebounceMs');
     if (!Number.isInteger(shutdownTimeoutMs) || shutdownTimeoutMs < 1 || shutdownTimeoutMs > 10000) throw fault('INVALID_INPUT', 'Invalid shutdownTimeoutMs');
     this.statePath = resolve(statePath);
     this.providers = providers;
+    this.getOptions = getOptions;
+    this.validateDirectory = validateDirectory;
     this.saveDebounceMs = saveDebounceMs;
     this.shutdownTimeoutMs = shutdownTimeoutMs;
     this.state = { version: 1, sessions: [] };
@@ -72,6 +76,11 @@ export class ChatManager {
     for (const session of stored.sessions) {
       if (!session || !validText(session.id, 128) || ids.has(session.id) || !PROVIDERS.has(session.provider) || !STATUSES.has(session.status) || !isAbsolute(session.cwd || '') || !Array.isArray(session.messages) || session.messages.length > MAX_MESSAGES || !Array.isArray(session.requests) || session.requests.length > MAX_REQUESTS) throw fault('INVALID_STATE', 'Invalid chat session record');
       ids.add(session.id);
+      session.machineId ||= 'local';
+      session.settingsRevision ??= 0;
+      if (!Number.isSafeInteger(session.settingsRevision) || session.settingsRevision < 0 || (session.archived !== undefined && typeof session.archived !== 'boolean') || (session.pinned !== undefined && typeof session.pinned !== 'boolean')) throw fault('INVALID_STATE', 'Invalid session metadata');
+      if (!validText(session.machineId, 128)) throw fault('INVALID_STATE', 'Invalid machine identity');
+      session.settings = validateSettings(session.provider, session.settings || legacySettings(session.provider));
       if (!validText(session.name, 100) || (session.providerSessionId !== undefined && !validText(session.providerSessionId, 512))) throw fault('INVALID_STATE', 'Invalid chat session metadata');
       const requests = new Set();
       for (const request of session.requests) {
@@ -157,20 +166,22 @@ export class ChatManager {
   }
 
   list() {
-    return this._run(() => this.state.sessions.map(session => ({ id: session.id, provider: session.provider, name: session.name, cwd: session.cwd, status: session.status, createdAt: session.createdAt, updatedAt: session.updatedAt, messageCount: session.messages.length, ...(session.error ? { error: session.error } : {}) })));
+    return this._run(() => this.state.sessions.map(session => ({ id: session.id, provider: session.provider, name: session.name, cwd: session.cwd, status: session.status, createdAt: session.createdAt, updatedAt: session.updatedAt, machineId: session.machineId, settings: session.settings, settingsRevision: session.settingsRevision || 0, archived: !!session.archived, pinned: !!session.pinned, messageCount: session.messages.length, ...(session.error ? { error: session.error } : {}) })));
   }
-  create({ provider, cwd, name, machineId = 'local', remote } = {}) {
+  create({ provider, cwd, name, machineId = 'local', remote, settings = DEFAULT_SETTINGS } = {}) {
     return this._run(async () => {
-      if (machineId !== 'local' || remote) throw fault('UNSUPPORTED', 'Structured chat currently supports local sessions only');
+      if (remote || !validText(machineId, 128) || (machineId !== 'local' && !this.validateDirectory)) throw fault('UNSUPPORTED', 'Machine is unavailable');
+      const config = validateSettings(provider, settings);
       if (!PROVIDERS.has(provider) || typeof this.providers[provider] !== 'function') throw fault('UNSUPPORTED', 'Chat provider is unavailable');
       if (!validText(cwd, 4096) || !isAbsolute(cwd) || /[\r\n\t]/.test(cwd)) throw fault('INVALID_INPUT', 'cwd must be an absolute local directory');
       let directory;
-      try { directory = await stat(cwd); } catch { throw fault('INVALID_INPUT', 'cwd must exist locally'); }
+      if (this.validateDirectory) cwd = await this.validateDirectory(machineId, cwd);
+      try { directory = machineId === 'local' ? await stat(cwd) : { isDirectory: () => true }; } catch { throw fault('INVALID_INPUT', 'cwd must exist locally'); }
       if (!directory.isDirectory()) throw fault('INVALID_INPUT', 'cwd must be a local directory');
       if (name !== undefined && (!validText(name, 100) || /[\r\n\t]/.test(name))) throw fault('INVALID_INPUT', 'Invalid session name');
       if (this.state.sessions.length >= MAX_SESSIONS) throw fault('STATE_LIMIT', 'Maximum chat session count reached');
       const timestamp = now();
-      const session = { id: randomUUID(), provider, name: name || `${provider} chat`, cwd, status: 'idle', messages: [], requests: [], createdAt: timestamp, updatedAt: timestamp };
+      const session = { id: randomUUID(), provider, name: name || `${provider} chat`, cwd, machineId, settings: config, settingsRevision: 0, status: 'idle', messages: [], requests: [], createdAt: timestamp, updatedAt: timestamp };
       this.state.sessions.push(session);
       try { await this._persist(); } catch (error) { this.state.sessions = this.state.sessions.filter(value => value !== session); throw error; }
       return this._snapshot(session);
@@ -178,10 +189,62 @@ export class ChatManager {
   }
   get(id) { return this._run(() => this._snapshot(this._session(id))); }
 
+  metadata({ id, name, archived, pinned } = {}) {
+    return this._run(async () => {
+      const session = this._session(id), before = copy(session);
+      if (name !== undefined && (!validText(name, 100) || !name.trim() || /[\r\n\t]/.test(name))) throw fault('INVALID_INPUT', 'Invalid session name');
+      if ([archived, pinned].some(v => v !== undefined && typeof v !== 'boolean')) throw fault('INVALID_INPUT', 'Invalid session metadata');
+      if (archived && ['running', 'waiting'].includes(session.status)) throw fault('BUSY', 'Stop the current turn before archiving');
+      if (name !== undefined) session.name = name.trim();
+      if (archived !== undefined) session.archived = archived;
+      if (pinned !== undefined) session.pinned = pinned;
+      session.updatedAt = now();
+      try { await this._persist(); } catch (error) { Object.assign(session, before); for (const key of ['archived', 'pinned']) if (!Object.hasOwn(before, key)) delete session[key]; throw error; }
+      return this._snapshot(session);
+    });
+  }
+  search(query) {
+    return this._run(() => {
+      if (!validText(query, 200, true)) throw fault('INVALID_INPUT', 'Search is limited to 200 characters');
+      const needle = query.trim().toLocaleLowerCase();
+      if (!needle) return [];
+      return this.state.sessions.flatMap(session => {
+        for (const message of session.messages) {
+          const index = message.text.toLocaleLowerCase().indexOf(needle);
+          if (index >= 0) return [{ id: session.id, snippet: message.text.slice(Math.max(0, index - 40), index + needle.length + 100) }];
+        }
+        return [];
+      });
+    });
+  }
+  export(id, format) { return this._run(() => exportConversation(this._snapshot(this._session(id)), format)); }
+
+  async options(id, refresh = false) {
+    const session = await this.get(id);
+    if (!this.getOptions) throw fault('UNSUPPORTED', 'CLI configuration lookup is unavailable');
+    return this.getOptions(session, refresh === true);
+  }
+  configure({ id, settings, patch, expectedRevision } = {}) {
+    return this._run(async () => {
+      const session = this._session(id);
+      if (session.status === 'closed') throw fault('CLOSED', 'Chat session is closed');
+      if (['running', 'waiting'].includes(session.status)) throw fault('BUSY', 'Stop the current turn before changing settings');
+      if (expectedRevision !== undefined && expectedRevision !== (session.settingsRevision || 0)) throw fault('CONFLICT', 'Settings changed elsewhere. Refresh this conversation before trying again.');
+      if (patch !== undefined && (!patch || typeof patch !== 'object' || Array.isArray(patch) || settings !== undefined)) throw fault('INVALID_INPUT', 'Invalid settings patch');
+      const next = validateSettings(session.provider, patch === undefined ? settings : { ...session.settings, ...patch });
+      const previous = session.settings, effective = session.effectiveSettings, updatedAt = session.updatedAt, revision = session.settingsRevision || 0;
+      session.settings = next; session.settingsRevision = revision + 1; delete session.effectiveSettings; session.updatedAt = now();
+      try { await this._persist(); } catch (error) { session.settings = previous; session.settingsRevision = revision; session.updatedAt = updatedAt; if (effective) session.effectiveSettings = effective; throw error; }
+      const runtime = this.runtimes.get(id);
+      if (runtime) { runtime.active = false; this.runtimes.delete(id); this._deny(runtime); await this._shutdown(runtime); }
+      return this._snapshot(session);
+    });
+  }
+
   send({ id, text, requestId, provider, machineId, remote } = {}) {
     return this._run(async () => {
       const session = this._session(id);
-      if ((provider !== undefined && provider !== session.provider) || (machineId !== undefined && machineId !== 'local') || remote) throw fault('UNSUPPORTED', 'Provider and local machine are fixed for a session');
+      if ((provider !== undefined && provider !== session.provider) || (machineId !== undefined && machineId !== (session.machineId || 'local')) || remote) throw fault('UNSUPPORTED', 'Provider and local machine are fixed for a session');
       if (!validText(text, TEXT_LIMIT) || !text.trim()) throw fault('INVALID_INPUT', 'Message must contain 1–65536 characters');
       if (!validText(requestId, 128) || /[\r\n\t]/.test(requestId)) throw fault('INVALID_INPUT', 'A stable requestId is required');
       const existing = session.requests.find(request => request.requestId === requestId);
@@ -227,6 +290,8 @@ export class ChatManager {
       const content = clip(type === 'text.delta' ? message.text + value.text : value.text);
       message.text = content.text;
       if (content.truncated) message.textTruncated = true;
+    } else if (type === 'provider.settings') {
+      session.effectiveSettings = Object.fromEntries(['model', 'effort', 'permissions', 'sandbox'].filter(key => typeof value[key] === 'string' && value[key].length <= 256).map(key => [key, value[key]]));
     } else if (type === 'provider.session') {
       if (validText(value.id, 512) && !/[\r\n\t]/.test(value.id)) session.providerSessionId = value.id;
     } else if (['tool.start', 'tool.input', 'tool.update', 'tool.end'].includes(type)) {

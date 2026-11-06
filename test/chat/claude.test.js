@@ -45,7 +45,7 @@ test('official query options, owned session resume, multi-message snapshots and 
   assert.equal(calls[0].prompt, 'first');
   assert.equal(calls[0].options.cwd, '/project');
   assert.equal(calls[0].options.permissionMode, 'default');
-  assert.deepEqual(calls[0].options.settingSources, []);
+  assert.deepEqual(calls[0].options.settingSources, ['user', 'project', 'local']);
   assert.equal(calls[0].options.includePartialMessages, true);
   assert.equal(calls[0].options.pathToClaudeCodeExecutable, '/fake/claude');
   assert.equal(calls[0].options.resume, undefined);
@@ -215,4 +215,15 @@ test('resume never switches to unrelated main session ID', async () => {
   const { adapter } = await fixture(() => (async function* () { yield result({ session_id: 'foreign' }); })(), { session: { providerSessionId: 'owned' } });
   await assert.rejects(adapter.send('go'), /different session ID/);
   adapter.close();
+});
+
+test('Claude CLI inheritance, explicit model/effort and YOLO map to SDK options', async () => {
+  for (const permissions of ['cli', 'bypassPermissions', 'plan']) {
+    let options;
+    const { adapter } = await fixture(args => { options=args.options;return (async function*(){yield result();})(); }, {session:{settings:{model:'opus',effort:'high',permissions}}});
+    await adapter.send('hello');assert.equal(options.model,'opus');assert.equal(options.effort,'high');
+    assert.equal(options.permissionMode,permissions==='cli'?undefined:permissions);
+    assert.equal(options.allowDangerouslySkipPermissions,permissions==='bypassPermissions'?true:undefined);
+    assert.deepEqual(options.settingSources,['user','project','local']);adapter.close();
+  }
 });

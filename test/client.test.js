@@ -6,6 +6,7 @@ import vm from "node:vm";
 import { JSDOM } from "jsdom";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
+import { PRIMITIVES_ALIAS } from "./helpers/primitives-alias.js";
 
 // Exercise the same CJS factory, shared React, slots and RPC used by the host.
 test("client registers DSH slots and handles terminal diagnostics and stopped states", async () => {
@@ -18,6 +19,7 @@ test("client registers DSH slots and handles terminal diagnostics and stopped st
     jsx: "automatic",
     loader: { ".css": "text" },
     external: ["react", "react/jsx-runtime"],
+    alias: PRIMITIVES_ALIAS,
   });
   const dom = new JSDOM(
     '<!doctype html><html><head></head><body><div id="root"></div></body></html>',
@@ -39,7 +41,7 @@ test("client registers DSH slots and handles terminal diagnostics and stopped st
     setTimeout,
     clearTimeout,
     console,
-    crypto: globalThis.crypto,
+    crypto: globalThis.crypto, AbortController,
   });
   const registrations = [];
   const cleanup = [];

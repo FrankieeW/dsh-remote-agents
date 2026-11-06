@@ -344,3 +344,22 @@ test('local real directory and supported provider validations never call factori
   assert.equal(calls, 0);
   await f.manager.dispose();
 });
+
+test('Codex identity and deduplication persist without starting a process on reload', async t => {
+  let starts = 0;
+  const providers = { codex: async context => {
+    starts++;
+    return { send: async () => { context.emit('provider.session', { id: 'codex-owned' }); context.emit('text.done', { text: 'done' }); }, abort: async () => {}, close: async () => {} };
+  }};
+  const f = await fixture(providers); t.after(() => f.manager.dispose());
+  const session = await f.manager.create({ provider: 'codex', cwd: f.cwd });
+  assert.equal(starts, 0);
+  const input = { id: session.id, text: 'hello', requestId: 'codex-request' };
+  await f.manager.send(input);
+  await until(() => f.manager.get(session.id), s => s.status === 'idle');
+  await f.manager.dispose();
+  const resumed = new ChatManager({ statePath: f.statePath, providers }); t.after(() => resumed.dispose());
+  assert.equal((await resumed.get(session.id)).providerSessionId, 'codex-owned');
+  assert.equal((await resumed.send(input)).duplicate, true);
+  assert.equal(starts, 1);
+});
