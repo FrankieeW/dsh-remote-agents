@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ChatManager } from '../../src/chat/manager.js';
-import { validateSettings, DEFAULT_SETTINGS, codexPermissionOptions } from '../../src/chat/settings.js';
-import { createProviderRegistry } from '../../src/chat/providers.js';
+import { ChatManager } from '../reference/src/chat/manager.js';
+import { validateSettings, DEFAULT_SETTINGS, codexPermissionOptions } from '../reference/src/chat/settings.js';
+import { createProviderRegistry } from '../reference/src/chat/providers.js';
 
 const until = async check => { for(let i=0;i<100;i++){if(await check())return;await new Promise(r=>setTimeout(r,5));}throw Error('timeout'); };
 test('settings accept only provider-specific CLI fields and permission values', () => {

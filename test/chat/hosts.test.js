@@ -4,8 +4,8 @@ import { execFileSync } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createHosts, remoteCommand, sshArgs } from '../../src/chat/hosts.js';
-import { FleetManager } from '../../src/core/index.js';
+import { createHosts, remoteCommand, sshArgs } from '../reference/src/chat/hosts.js';
+import { FleetManager } from '../reference/src/core/index.js';
 const machine={id:'remote',type:'ssh',host:'dev-box',name:'Development',user:'alice',port:2222};
 
 test('remote argv preserves spaces/quotes/metacharacters without shell expansion',()=>{

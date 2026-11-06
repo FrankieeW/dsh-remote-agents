@@ -8,6 +8,8 @@ export function exportConversation(session, format = 'markdown') {
   if (session.historyTruncated) lines.push('Earlier history was truncated; this export contains retained messages only.', '');
   for (const message of session.messages) {
     lines.push(`## ${message.role === 'user' ? 'User' : 'Assistant'}`, '', message.text || '', '');
+    if (message.textTruncated) lines.push('Reply text was shortened in the retained plugin record.', '');
+    if (message.toolsTruncated) lines.push(`Only the first ${message.tools.length} tool calls were retained in the plugin record.`, '');
     for (const tool of message.tools || []) lines.push(`### Tool: ${tool.name}`, '', fence({ input: tool.input, result: tool.result, status: tool.status }), '');
   }
   return { filename: `conversation-${session.id}.md`, mime: 'text/markdown', content: lines.join('\n') };

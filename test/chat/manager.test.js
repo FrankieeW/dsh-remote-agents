@@ -4,7 +4,7 @@ import { mkdtemp, readFile, writeFile, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { ChatManager } from '../../src/chat/manager.js';
+import { ChatManager } from '../reference/src/chat/manager.js';
 
 function deferred() { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; }
 async function fixture(providers) {

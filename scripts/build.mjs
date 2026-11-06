@@ -1,6 +1,19 @@
 import { build } from "esbuild";
+import { execFileSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 await mkdir("lib", { recursive: true });
+execFileSync(process.execPath, ["scripts/build-native.mjs"], {
+  stdio: "inherit",
+});
+await build({
+  entryPoints: ["src/native/claude-bridge.js"],
+  outfile: "lib/claude-bridge.js",
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  external: ["@anthropic-ai/claude-agent-sdk"],
+});
 await build({
   entryPoints: ["src/index.js"],
   outfile: "lib/index.js",
@@ -37,7 +50,13 @@ const browser = await build({
   jsx: "automatic",
   loader: { ".css": "text" },
   // Supplied by the DSH shell's shared module table; never bundled.
-  external: ["react", "react/jsx-runtime", "react-dom", "react-dom/client", "@deepseek-ai/dsh-client-ui-primitives"],
+  external: [
+    "react",
+    "react/jsx-runtime",
+    "react-dom",
+    "react-dom/client",
+    "@deepseek-ai/dsh-client-ui-primitives",
+  ],
   minify: false,
 });
 const body = browser.outputFiles[0].text;

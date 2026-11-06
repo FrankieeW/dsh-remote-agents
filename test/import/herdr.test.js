@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, stat, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FleetManager } from "../../src/core/index.js";
-import { parseSSHTarget } from "../../src/import/herdr.js";
+import { FleetManager } from "../reference/src/core/index.js";
+import { parseSSHTarget } from "../reference/src/import/herdr.js";
 
 const profile = (changes = {}) => ({
   id: "a".repeat(32),

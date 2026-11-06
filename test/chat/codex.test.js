@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { realpath } from 'node:fs/promises';
 import { EventEmitter } from 'node:events';
 import { PassThrough, Writable } from 'node:stream';
-import { createCodexProvider } from '../../src/chat/codex.js';
+import { createCodexProvider } from '../reference/src/chat/codex.js';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function harness(options = {}) {

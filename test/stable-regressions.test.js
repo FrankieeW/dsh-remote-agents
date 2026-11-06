@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ChatManager } from '../src/chat/manager.js';
-import { FleetManager } from '../src/core/index.js';
+import { ChatManager } from './reference/src/chat/manager.js';
+import { FleetManager } from './reference/src/core/index.js';
 import { createWorkspaceStore } from '../src/client/workspace-store.js';
 import { createPoller } from '../src/client/polling.js';
-import { planUpdate } from '../src/chat/updates.js';
+import { planUpdate } from './reference/src/chat/updates.js';
 import { diagnose } from '../src/client/diagnostics.js';
 const flush = () => new Promise(resolve => setImmediate(resolve));
 

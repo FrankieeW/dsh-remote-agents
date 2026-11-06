@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FleetManager, shellQuote } from "../../src/core/index.js";
+import { FleetManager, shellQuote } from "../reference/src/core/index.js";
 
 async function fixture() {
   const directory = await mkdtemp(join(tmpdir(), "dsh-core-test-"));

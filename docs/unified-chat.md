@@ -14,6 +14,12 @@ The interface defaults to **English** and uses DSH's semantic light/dark theme, 
 - Searching temporarily expands matching branches through collapsed ancestors; clearing the query restores the saved collapse state. Unregistered History groups cannot act as ancestors of registered workspaces.
 - The replacement provides workspace adoption by absolute path, metadata and retained external-message search, external rename/pin/archive/restore and export, history filters, workspace removal, and native rename/fork/pin/archive actions. It does not mirror native single-session-list view, native content search, drag ordering or workspace renaming. The global DSH New Session shortcut still creates a native draft. Machines and legacy terminals remain a separate management entry, not a conversation workbench.
 
+## Retained previews and original OMP history
+
+The plugin record retains the first 16 tool calls per assistant turn and bounds tool values to 4,096 characters. A tool-count notice does not imply that the assistant reply text was shortened; text truncation is reported separately.
+
+For local OMP sessions, **View original OMP turn** reads the CLI-owned JSONL history on demand, matches the session identity, working directory and ordered prompt hashes, and pages the original tool calls. Individual records can be expanded to 256 Ki characters per value; larger records remain in the unchanged original file. This is a read-only snapshot with an explicit refresh, not a model request. Native files larger than 256 MiB, missing history, ambiguous identities and mismatched branches return a visible error without guessing or changing the conversation. Remote OMP history lookup is not exposed by this reader. The normal conversation export contains the retained plugin preview and labels omitted content.
+
 ## Tool rendering recovery
 
 Version 0.4.1 accepts OMP phased `todo` input (`op: init`, `list[].items`) and full state returned in `result.details.phases[].tasks`. Returned task statuses take precedence over initialization input. Unknown, incomplete or truncated todo records remain viewable as structured data. Each tool card has a rendering boundary with a raw-data fallback; a card failure does not unmount the conversation or its composer. Existing persisted transcripts require no migration.
@@ -31,6 +37,10 @@ Version 0.4.1 accepts OMP phased `todo` input (`op: init`, `list[].items`) and f
 | SSH structured chat | Local Host only | Yes | Yes, compatible RPC v2 CLI | Yes, compatible app-server CLI |
 
 The existing machine/project import and SSH terminal tools remain under **Machines & projects**. Codex is available as both structured local chat and a legacy terminal. Unsupported questions are denied/cancelled visibly rather than answered with a guessed boolean. Unknown OMP URLs are not opened. OMP `/` and `!` shortcut commands are rejected to avoid implicit session/configuration changes.
+
+## Rust backend
+
+The development branch routes every backend operation to a bundled Rust process over bounded JSONL on stdio. DSH authentication and Fetch registration remain in the thin JavaScript host shim. Rust owns session/fleet storage, CLI discovery and configuration, SSH/tmux, provider event handling, approvals, imports, export/search and original OMP history. The Claude Node helper only invokes the official SDK and forwards its events and permission requests; decisions and normalization remain in Rust. No network listener or automatic JavaScript backend fallback is added. See [native architecture](../native/README.md).
 
 ## Protocols and lifecycle
 
@@ -52,7 +62,7 @@ Next to the fleet state file:
 - `conversations.json` stores bounded external conversation records, messages/tool output, request receipts and owned native IDs. Atomic replacement uses mode 0600; directories are initially 0700. One live ChatManager owns this file: **do not point simultaneous DSH profiles at the same chat state directory**.
 - `omp-sessions/<app-session-id>/` isolates native OMP session storage. Resume checks its returned identity/path rather than taking arbitrary client-supplied session paths.
 - Claude and Codex also use its normal native persistence. Authentication stays with the installed CLI; the plugin does not read credential files or copy credentials into its state.
-- Conversation text, tool inputs and results may contain sensitive project data. The stored transcript is bounded (256 sessions, 200 messages/session, 16 tool cards/message, 64 Ki characters/message, 4 Ki characters/tool value, 16 MiB total). Truncation is displayed; native continuation is not reconstructed from truncated UI history.
+- Conversation text, tool inputs and results may contain sensitive project data. The stored transcript is bounded (256 sessions, 200 messages/session, 16 tool cards/message, 64 Ki characters/message, 4 Ki characters/tool value, 64 MiB total). Truncation is displayed; native continuation is not reconstructed from truncated UI history.
 - Closing the browser does not stop the Host's owned runtimes. Closing a session or unloading the plugin denies pending approvals and stops the corresponding structured subprocesses. This differs from legacy tmux sessions, which intentionally survive plugin unload.
 
 ## Implementation references

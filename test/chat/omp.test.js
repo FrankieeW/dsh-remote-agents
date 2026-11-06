@@ -5,7 +5,7 @@ import { PassThrough, Writable } from 'node:stream';
 import { mkdtemp, rm, stat, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createOmpProvider } from '../../src/chat/omp.js';
+import { createOmpProvider } from '../reference/src/chat/omp.js';
 
 // All subprocesses here are in-memory fakes: never execute omp or load user credentials/sessions.
 class FakeChild extends EventEmitter {

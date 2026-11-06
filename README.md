@@ -4,7 +4,7 @@ Unified DSH workspaces for **Claude Code, Codex and OMP**, with local and SSH co
 
 Unofficial community plugin, independently developed and maintained; not affiliated with DeepSeek. User messages and provider output are never translated or rewritten.
 
-> **Stable channel: 0.4.1.** Supports DSH 0.2.2-rc.1 and the CLI compatibility ranges below. Restart the desktop application after upgrading so its host and interface use the same plugin version.
+> **Development branch: Rust backend (`0.5.0-alpha.0`).** The public stable npm version is still 0.4.1. This branch moves backend operations to a Rust sidecar while preserving the DSH/React interface and existing state files. It is not published or installed automatically. See [native architecture and builds](native/README.md).
 
 ## Screenshots
 
@@ -91,24 +91,26 @@ The plugin uses owner-only exact Fetch routes on DSH's existing authenticated `/
 
 ## Build and install
 
+Building this development branch requires a stable Rust toolchain in addition to Node.js. Packaged installations use the bundled executable and do not compile Rust. A local build includes only the current platform; use the native distribution workflow for a package containing all four macOS/Linux architectures.
+
 ```sh
 npm ci --ignore-scripts
-npm test
-npm run build
+npm run check       # builds Rust + JS, then runs regression and native tests
+npm run test:package
 npm pack
 ```
 
 Install the resulting package through the plugin manager of the **same profile as your running GUI**. For an explicitly selected `web` profile:
 
 ```sh
-dsh plugin --profile web add /absolute/path/dsh-remote-agents-0.4.1.tgz
+dsh plugin --profile web add /absolute/path/dsh-remote-agents-0.5.0-alpha.0.tgz
 ```
 
 For the desktop application, use its plugin management entry rather than installing into an unrelated `web` profile. Restart the desktop application after the update; no automatic HMR is promised without a matching `dev:web` watcher.
 
-Install the versioned **0.4.1** tarball for this Workspace revision. Repacking an older tarball at its existing installed path can retain pnpm's old file integrity/cache; a new version and filename avoid that ambiguity.
+Install the development **0.5.0-alpha.0** tarball only in a separate test profile until the Rust migration has been reviewed. Repacking an older tarball at its existing installed path can retain pnpm's old file integrity/cache; a new version and filename avoid that ambiguity.
 
-The historical [v0.2.0 release](https://github.com/FrankieeW/dsh-remote-agents/releases/tag/v0.2.0) does **not** include unified chat. Build this revision for 0.4.1; an existing public release is not silently replaced.
+The historical [v0.2.0 release](https://github.com/FrankieeW/dsh-remote-agents/releases/tag/v0.2.0) does **not** include unified chat. Building this Rust revision does not replace the published 0.4.1 release or the running desktop installation.
 
 Build artifacts contain a Host ESM entry and a DSH lazy client factory. React is shared with the Host. The pinned Claude SDK remains an ordinary runtime dependency rather than being embedded into the browser bundle.
 
@@ -168,8 +170,8 @@ Unit and component tests cover protocol framing, completion correlation, permiss
 
 ## Source map
 
-- [Chat manager contract](<src/chat/types.md>) and [manager](<src/chat/manager.js>).
-- [Claude adapter](<src/chat/claude.js>), [Codex adapter](<src/chat/codex.js>) and [OMP adapter](<src/chat/omp.js>).
+- [Chat contract](<src/chat/types.md>) and [Rust session manager](<native/src/chat.rs>).
+- [Rust provider runtimes](<native/src/runtimes.rs>), [CLI discovery and updates](<native/src/providers.rs>), and [Claude SDK transport bridge](<src/native/claude-bridge.js>).
 - [Workspace browser](<src/client/WorkspaceSidebar.jsx>), [conversation content](<src/client/ChatWorkbench.jsx>) and [native entry integration](<src/client-entry.jsx>).
-- [Fleet API](<src/core/API.md>), [Host entry](<src/index.js>) and [RPC](<src/rpc.js>).
+- [Fleet API](<src/core/API.md>), [Rust fleet implementation](<native/src/fleet.rs>), [Host entry](<src/index.js>) and [RPC route names](<src/rpc.js>).
 - [Architecture and upstream references](<docs/unified-chat.md>).

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { OmpFrameDecoder, MAX_FRAME_BYTES, MAX_REASSEMBLED_BYTES } from '../../src/chat/omp-frames.js';
+import { OmpFrameDecoder, MAX_FRAME_BYTES, MAX_REASSEMBLED_BYTES } from '../reference/src/chat/omp-frames.js';
 const line = frame => Buffer.from(JSON.stringify(frame) + '\n');
 function chunks(value) {
   const bytes = Buffer.from(JSON.stringify(value)), size = 256 * 1024;

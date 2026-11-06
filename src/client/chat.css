@@ -357,3 +357,9 @@
 .agent-settings-save { width: 100%; font-size: 11px; color: var(--dsw-alias-label-caption); padding: 2px 0; }
 .agent-chat-settings { flex-wrap: wrap; }
 .agent-chat-header-actions select { max-width: 110px; border-radius: 6px; background: transparent; color: inherit; font: inherit; font-size: 12px; border: 1px solid var(--dsw-alias-label-caption); padding: 5px; }
+
+.agent-original-history { margin-top: 12px; padding: 12px; border: 1px solid var(--dsw-alias-label-caption); border-radius: 8px; font-size: 12px; }
+.agent-original-history button { font: inherit; color: inherit; background: transparent; border: 1px solid var(--dsw-alias-label-caption); border-radius: 6px; padding: 5px 9px; margin: 4px 6px 4px 0; cursor: pointer; }
+.agent-original-history button:disabled { opacity: .5; cursor: default; }
+.agent-original-history-tools, .agent-original-tool-detail pre { max-height: 420px; overflow: auto; }
+.agent-original-history pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 420px; overflow: auto; }

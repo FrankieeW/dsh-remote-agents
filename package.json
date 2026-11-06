@@ -1,6 +1,6 @@
 {
   "name": "dsh-remote-agents",
-  "version": "0.4.1",
+  "version": "0.5.0-alpha.0",
   "bin": {
     "dsh-remote-agents-import": "./lib/import-cli.js"
   },
@@ -10,7 +10,7 @@
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public",
-    "tag": "latest"
+    "tag": "next"
   },
   "repository": {
     "type": "git",
@@ -38,15 +38,18 @@
     "docs",
     "cordis.patch.yml",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "lib/native/**"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node --test",
-    "check": "npm test && npm run build",
+    "test": "node --test test/*.test.js test/chat/*.test.js test/core/*.test.js test/import/*.test.js",
+    "check": "npm run build && npm test && npm run test:native",
     "prepack": "npm run build",
     "test:package": "node scripts/verify-package.mjs",
-    "test:smoke": "DSH_FLEET_SMOKE=1 node --test test/local-smoke.test.js"
+    "test:smoke": "DSH_FLEET_SMOKE=1 node --test test/native-tmux.test.js",
+    "build:native": "node scripts/build-native.mjs",
+    "test:native": "cargo test --manifest-path native/Cargo.toml --locked"
   },
   "dsh": {
     "manifestVersion": 1,

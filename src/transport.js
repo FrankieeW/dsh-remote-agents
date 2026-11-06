@@ -1,9 +1,8 @@
-import { CHANNEL, RPC_PREFIX, ENDPOINTS, createHandler } from "./rpc.js";
+import { CHANNEL, RPC_PREFIX, ENDPOINTS } from "./rpc.js";
 
 // Connection's exact Fetch routes are owner-only, admitted by the existing
 // authenticated /api carrier (HTTP or IPC). Do not mount these on a raw server.
-export function registerFleetRoutes(ctx, fleet, chat, providerDescriptions, hosts, registry) {
-  const handler = createHandler(fleet, chat, providerDescriptions, hosts, registry);
+export function registerRoutes(ctx, handler) {
   for (const endpoint of ENDPOINTS) {
     const method = RPC_PREFIX + endpoint;
     ctx.effect(() =>

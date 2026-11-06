@@ -4,7 +4,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
-import { FleetManager } from "../src/core/index.js";
+import { FleetManager } from "./reference/src/core/index.js";
 
 test(
   "real isolated local tmux shell lifecycle",

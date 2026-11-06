@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { TodoList } from "./chat-todos.jsx";
 import { DIFF_LABELS, MARKDOWN_LABELS, TERMINAL_LABELS } from "./native-labels.js";
 import { describeTool, printable, toolTitle } from "./tool-presentation.js";
@@ -86,7 +86,54 @@ function UserMessage({ message }) {
   </article>;
 }
 
-function AssistantMessage({ message, cwd, streaming }) {
+function OriginalOmpTurn({ api, session, message }) {
+  const [snapshot, setSnapshot] = useState(null), [opened, setOpened] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(''), [detail, setDetail] = useState(null);
+  const epoch = useRef(0), locked = useRef(false);
+  useEffect(() => () => { epoch.current++; }, []);
+  async function load(offset = 0, toolId) {
+    if (locked.current) return;
+    locked.current = true; const current = ++epoch.current;
+    setBusy(true); setError(''); setOpened(true);
+    try {
+      const result = await api('chatOmpHistory', { id: session.id, messageId: message.id, offset, limit: 16, ...(toolId ? {toolId} : {}) });
+      if (current !== epoch.current) return;
+      if (toolId) {
+        if (!result?.tool || result.tool.id !== toolId) throw new Error('Invalid original tool response');
+        setDetail(result);
+      } else {
+        if (!Array.isArray(result?.tools) || !Number.isSafeInteger(result.totalTools)) throw new Error('Invalid original history response');
+        setSnapshot(previous => ({ ...result, tools: offset && previous ? [...previous.tools, ...result.tools] : result.tools }));
+        if (!offset) setDetail(null);
+      }
+    } catch (cause) { if (current === epoch.current) setError(cause.message || 'Could not load original history'); }
+    finally { locked.current = false; if (current === epoch.current) setBusy(false); }
+  }
+  if ((session.machineId || 'local') !== 'local') return <p className="agent-chat-caption">For the complete remote record, inspect this session using OMP on its SSH host.</p>;
+  return <section className="agent-original-history" aria-label="Original OMP history">
+    <button type="button" disabled={busy} onClick={() => opened ? setOpened(false) : load()}>{busy ? 'Reading OMP history…' : opened ? 'Hide original OMP history' : 'View original OMP turn'}</button>
+    {opened && <>
+      <p className="agent-chat-caption">Read-only snapshot of this session's saved OMP history. Refresh to see later changes; this does not send a message or start an agent.</p>
+      {error && <p role="alert">{error}</p>}
+      <button type="button" disabled={busy} onClick={() => load()}>Refresh original history</button>
+      {snapshot && <>
+        <p role="status">Showing {snapshot.tools.length} of {snapshot.totalTools} original tool calls.</p>
+        <div className="agent-original-history-tools">{snapshot.tools.map(tool => <div key={tool.id}>
+          <ToolRenderBoundary tool={tool}><ToolRow tool={tool} cwd={session.cwd} /></ToolRenderBoundary>
+          {tool.previewTruncated && <button type="button" disabled={busy} onClick={() => load(0, tool.id)}>Read larger record for {toolTitle(tool.name)}</button>}
+        </div>)}</div>
+        {snapshot.hasMore && <button type="button" disabled={busy} onClick={() => load(snapshot.nextOffset)}>Load more original tool calls</button>}
+        {detail && <details open className="agent-original-tool-detail"><summary>{toolTitle(detail.tool.name)} · original record</summary><pre>{printable({input:detail.tool.input,result:detail.tool.result})}</pre>
+          {detail.tool.previewTruncated && <p className="agent-chat-caption">This view is limited to {detail.detailLimit.toLocaleString()} characters per value. The original OMP file is unchanged.</p>}
+        </details>}
+        {snapshot.text && <details><summary>Original assistant text ({snapshot.textLength.toLocaleString()} characters)</summary><pre>{snapshot.text}</pre>
+          {snapshot.textPreviewTruncated && <p className="agent-chat-caption">Text preview shortened; the original OMP file is unchanged.</p>}
+        </details>}
+      </>}
+    </>}
+  </section>;
+}
+
+function AssistantMessage({ message, cwd, streaming, session, api }) {
   const tools = message.tools || [];
   if (!tools.length && !message.text && !streaming) return null;
   return <article className="agent-chat-assistant" aria-label="Assistant message">
@@ -94,16 +141,18 @@ function AssistantMessage({ message, cwd, streaming }) {
     {message.text
       ? <div className="agent-chat-markdown"><MarkdownText text={message.text} streaming={streaming} labels={MARKDOWN_LABELS} /></div>
       : streaming && <TextShimmer active className="agent-chat-working">Working…</TextShimmer>}
-    {(message.textTruncated || message.toolsTruncated) && <p className="agent-chat-caption">Some content in this message was truncated.</p>}
+    {message.textTruncated && <p className="agent-chat-caption">Reply text exceeded the retained-message limit and was shortened.</p>}
+    {message.toolsTruncated && <p className="agent-chat-caption">Only the first {tools.length} tool calls were retained in this plugin message.</p>}
+    {session.provider === 'omp' && api && (message.textTruncated || message.toolsTruncated || tools.some(tool => tool.truncated)) && <OriginalOmpTurn key={message.id} api={api} session={session} message={message} />}
   </article>;
 }
 
 /** Messages in turn order; only the newest assistant turn streams. */
-export function Transcript({ session, active }) {
+export function Transcript({ session, active, api }) {
   const last = session.messages.at(-1);
   return session.messages.map((message) => message.role === "user"
     ? <UserMessage key={message.id} message={message} />
-    : <AssistantMessage key={message.id} message={message} cwd={session.cwd} streaming={active && message === last} />);
+    : <AssistantMessage key={message.id} message={message} cwd={session.cwd} streaming={active && message === last} session={session} api={api} />);
 }
 
 /** Native-style turn error row: red dot, title, message. */

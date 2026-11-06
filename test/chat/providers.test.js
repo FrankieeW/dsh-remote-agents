@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createProviderRegistry } from '../../src/chat/providers.js';
+import { createProviderRegistry } from '../reference/src/chat/providers.js';
 
 test('capability probe is cached, version-only, does not expose executable or create runtimes', async () => {
   const calls = [], starts = [];

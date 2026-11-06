@@ -1,7 +1,24 @@
 import { open, constants } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { FleetManager } from "./core/index.js";
+import { NativeBackend } from "./native/client.js";
+class NativeFleet {
+  constructor(config) {
+    this.backend = new NativeBackend(config);
+  }
+  snapshot() {
+    return this.backend.request("snapshot");
+  }
+  previewHerdr(input) {
+    return this.backend.request("previewHerdr", input);
+  }
+  importHerdr(input) {
+    return this.backend.request("importHerdr", input);
+  }
+  close() {
+    return this.backend.close();
+  }
+}
 import { resolveStatePath } from "./state-path.js";
 
 const MAX_FILE = 1024 * 1024;
@@ -84,7 +101,7 @@ export async function runImportCli(
   {
     env = process.env,
     stdout = (text) => process.stdout.write(text),
-    createFleet = (options) => new FleetManager(options),
+    createFleet = (options) => new NativeFleet(options),
   } = {},
 ) {
   const [command, ...rest] = argv;
@@ -106,9 +123,13 @@ export async function runImportCli(
     )
       throw new Error("list accepts only --state <fleet.json>");
     const statePath = resolveStatePath(rest[1], env);
-    const { machines, projects } = await createFleet({ statePath }).snapshot({
-      readOnly: true,
-    });
+    const fleet = createFleet({ statePath });
+    let machines, projects;
+    try {
+      ({ machines, projects } = await fleet.snapshot({ readOnly: true }));
+    } finally {
+      await fleet.close?.();
+    }
     stdout(`${JSON.stringify({ statePath, machines, projects }, null, 2)}\n`);
     return;
   }
@@ -163,12 +184,17 @@ export async function runImportCli(
     input.projectMachineId = options["--project-machine"];
   const statePath = resolveStatePath(options["--state"], env);
   const fleet = createFleet({ statePath });
-  const result =
-    command === "preview"
-      ? await fleet.previewHerdr(input)
-      : await fleet.importHerdr({
-          ...input,
-          confirmation: options["--confirm"],
-        });
+  let result;
+  try {
+    result =
+      command === "preview"
+        ? await fleet.previewHerdr(input)
+        : await fleet.importHerdr({
+            ...input,
+            confirmation: options["--confirm"],
+          });
+  } finally {
+    await fleet.close?.();
+  }
   stdout(`${JSON.stringify({ statePath, ...result }, null, 2)}\n`);
 }

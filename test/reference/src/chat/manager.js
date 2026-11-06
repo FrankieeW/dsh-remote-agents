@@ -1,8 +1,9 @@
+import { readOmpTurn } from './omp-history.js';
 import { exportConversation } from './export.js';
 import { DEFAULT_SETTINGS, legacySettings, validateSettings } from './settings.js';
 import { randomUUID, createHash } from 'node:crypto';
 import { mkdir, open, readFile, rename, unlink, stat } from 'node:fs/promises';
-import { resolve, dirname, isAbsolute } from 'node:path';
+import { resolve, dirname, isAbsolute, join } from 'node:path';
 
 const PROVIDERS = new Set(['claude', 'omp', 'codex']);
 const STATUSES = new Set(['idle', 'running', 'waiting', 'error', 'interrupted', 'closed']);
@@ -218,6 +219,10 @@ export class ChatManager {
     });
   }
   export(id, format) { return this._run(() => exportConversation(this._snapshot(this._session(id)), format)); }
+
+  originalOmpTurn({ id, messageId, offset, limit, toolId } = {}) {
+    return this._run(() => readOmpTurn(join(dirname(this.statePath), 'omp-sessions'), this._session(id), messageId, { offset, limit, toolId }));
+  }
 
   async options(id, refresh = false) {
     const session = await this.get(id);

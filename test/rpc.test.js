@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHandler, ENDPOINTS } from "../src/rpc.js";
+import { createHandler, ENDPOINTS } from "./reference/src/rpc.js";
 const owner = { principal: { kind: "owner" } };
 const call = (handler, method, payload = {}, peer = owner) =>
   handler(method, payload, new AbortController().signal, peer);

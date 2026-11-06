@@ -7,6 +7,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   const f = JSON.parse(line), reply = result => send({id:f.id,result});
   const notify = (method, params) => send({method,params:{threadId,turnId:`turn-${turn}`,...params}});
   if (f.method === 'initialize') reply({userAgent:'codex/0.167.0'});
+  if (f.method === 'configRequirements/read') reply({requirements:{allowedSandboxModes:['read-only','workspace-write'],allowedApprovalPolicies:['on-request','untrusted']}});
   if (f.method === 'config/read') reply({config:{model:'test-model',model_reasoning_effort:'low',approval_policy:'on-request',sandbox_mode:'read-only'}});
   if (f.method === 'model/list') reply({data:[{id:'test-model',model:'test-model',displayName:'Test model',supportedReasoningEfforts:[{reasoningEffort:'low'}]}]});
   if (['thread/start','thread/resume'].includes(f.method)) { threadId=f.params.threadId||threadId;reply({thread:{id:threadId,cwd:process.cwd()},model:f.params.model||'test-model',reasoningEffort:'low',approvalPolicy:'on-request',sandbox:{type:'readOnly'}}); }

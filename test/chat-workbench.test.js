@@ -378,3 +378,25 @@ test('a tool component rendering failure is contained with a raw-data fallback',
     assert.match(document.body.textContent,/retained output/);
   } finally { await h.cleanup(); }
 });
+
+test('OMP truncation identifies the retained tool limit and loads original pages only on request',async()=>{
+  const calls=[];
+  const state={...fixture('history'),provider:'omp',providerSessionId:'owned',messages:[{id:'reply',role:'assistant',text:'Reply intact',tools:[{id:'preview',name:'read',input:{path:'first'},status:'done',truncated:true}],toolsTruncated:true}]};
+  const h=await mount(async(method,payload)=>{
+    if(method==='chatList')return{sessions:[state],providers:[{id:'omp',available:true}]};
+    if(method==='chatGet')return structuredClone(state);
+    if(method==='chatOmpHistory'){
+      calls.push(payload);
+      if(payload.toolId)return{tool:{id:'original',name:'read',input:{path:'original'},result:'Complete tool result',status:'done',previewTruncated:false},detailLimit:262144};
+      return{totalTools:2,offset:payload.offset,nextOffset:payload.offset+1,hasMore:payload.offset===0,text:'Original reply',textLength:14,tools:[{id:payload.offset?'later':'original',name:'read',input:{path:payload.offset?'later':'original'},result:'preview',previewTruncated:!payload.offset,status:'done'}]};
+    }
+    throw Error(method);
+  });
+  try{
+    await h.select('history');assert.match(document.body.textContent,/Only the first 1 tool calls/);assert.equal(calls.length,0);assert.ok(!document.body.textContent.includes('Some content in this message was truncated'));
+    await h.click('View original OMP turn');assert.match(document.body.textContent,/Showing 1 of 2/);
+    await h.click('Load more original tool calls');assert.match(document.body.textContent,/Showing 2 of 2/);assert.equal(calls.at(-1).offset,1);
+    await h.click('Read larger record for read');assert.match(document.body.textContent,/Complete tool result/);
+    assert.ok(document.querySelector('textarea'));
+  }finally{await h.cleanup();}
+});

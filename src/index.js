@@ -1,37 +1,52 @@
-import { dirname, join } from "node:path";
-import { createHosts } from "./chat/hosts.js";
-import { ChatManager } from "./chat/manager.js";
-import { createProviderRegistry } from "./chat/providers.js";
+import { NativeBackend } from "./native/client.js";
 import { resolveStatePath } from "./state-path.js";
-import { FleetManager } from "./core/index.js";
-import { registerFleetRoutes } from "./transport.js";
+import { registerRoutes } from "./transport.js";
 import { apply as registerImportSkill } from "./skill.js";
-
 export const name = "remote-agents";
 export const inject = ["connection"];
-
 export function apply(ctx, config = {}) {
-  const statePath = resolveStatePath(config.statePath);
-  const fleet = new FleetManager({ statePath });
-  const hosts = createHosts(fleet);
-  const registry = createProviderRegistry({
-    hosts,
-    claudeExecutable: config.claudeExecutable,
-    ompExecutable: config.ompExecutable,
-    codexExecutable: config.codexExecutable,
-    sessionRoot: join(dirname(statePath), "omp-sessions"),
+  const backend = new NativeBackend({
+    ...config,
+    statePath: resolveStatePath(config.statePath),
   });
-  const chat = new ChatManager({
-    statePath: join(dirname(statePath), "conversations.json"),
-    providers: registry.providers,
-    getOptions: registry.options,
-    validateDirectory: hosts.validateDirectory,
+  registerRoutes(ctx, async (endpoint, payload, signal, peer) => {
+    if (peer?.principal?.kind !== "owner")
+      return {
+        ok: false,
+        error: {
+          code: "forbidden",
+          message: "Only the DSH owner can manage local and SSH agents.",
+          details: {},
+        },
+      };
+    if (signal?.aborted)
+      return {
+        ok: false,
+        error: {
+          code: "cancelled",
+          message: "Request cancelled.",
+          details: {},
+        },
+      };
+    try {
+      return {
+        ok: true,
+        value: await backend.request(endpoint, payload, signal),
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: {
+          code: error.code || "operation_failed",
+          message: String(error.message || "Rust backend failed").slice(
+            0,
+            2000,
+          ),
+          details: {},
+        },
+      };
+    }
   });
-  registerFleetRoutes(ctx, fleet, chat, registry.descriptions, hosts, registry);
-  // External structured runtimes belong to this Host instance, unlike tmux.
-  // Teardown denies live approvals and interrupts children; it never approves them.
-  ctx.effect(() => () => chat.dispose());
-  // Register with the existing skill service without a second client-plugin entry.
+  ctx.effect(() => () => backend.close());
   ctx.inject(["skills"], registerImportSkill);
-  // Do not kill persistent tmux sessions on HMR, plugin unload, or host restart.
 }

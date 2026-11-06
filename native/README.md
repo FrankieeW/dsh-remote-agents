@@ -1,0 +1,49 @@
+# Rust backend
+
+This development branch (`0.5.0-alpha.0`) replaces the JavaScript business backend with a Rust sidecar. The public 0.4.1 release remains unchanged until a new release is explicitly published.
+
+## Boundary
+
+- `src/index.js`, `src/transport.js`, `src/native/client.js`: DSH registration, authenticated owner-only Fetch carrier, bounded stdio transport and native binary lifecycle.
+- `src/native/claude-bridge.js`: the official Claude Agent SDK invocation and raw event/approval transport only. Rust validates settings, interprets events, owns conversation state, and decides how approvals are resolved. SSH command construction for the SDK runs through the Rust executable.
+- `native/src/engine.rs`: RPC dispatch and coordination between session operations, CLI updates and shutdown.
+- `chat.rs`, `common.rs`: persisted state, exclusive live ownership, atomic mode-0600 writes, idempotent admission, settings revisions, metadata, search/export and live-only approvals.
+- `hosts.rs`, `fleet.rs`, `herdr.rs`: registered SSH hosts, directory browsing, dedicated tmux socket ownership, and static preview/confirmed import. No default tmux sessions or unrelated native conversations are controlled.
+- `protocol.rs`, `runtimes.rs`, `providers.rs`: bounded framing, OMP v2 chunk assembly, native Codex app-server, Claude SDK events, lifecycle, model/configuration metadata and source-aware pinned updates.
+- `history.rs`: indexes native OMP JSONL parent links and byte offsets, then reads only the selected records. It validates session/cwd identity and ordered prompt hashes. Provider envelopes and credential identifiers are excluded from responses.
+
+There is no added HTTP server, no native-code download at runtime, and no silent fallback to the old JavaScript backend. Existing `version: 1` fleet/conversation files and native session identities are retained. Restarted in-flight turns become interrupted and require an explicit new message. The retained UI preview limits remain explicit; native OMP history is available on demand.
+
+## Build and validate
+
+```sh
+npm ci --ignore-scripts
+npm run check
+npm run test:package
+npm run test:smoke
+```
+
+`npm run build` compiles the Rust executable and the JavaScript UI/transport. `Cargo.lock` pins Rust dependencies. End users install a prebuilt npm package and do not need Cargo.
+
+The existing JavaScript implementations now live only under `test/reference/` as contract oracles. Their tests are not evidence that the Rust implementation works. The Rust runtime has separate process-based integration tests, native unit tests, an installed-package test using the shipped binary and client factory, and a real isolated tmux lifecycle test. Test CLI replies and UI primitives are deterministic fixtures; live-provider checks are separate.
+
+## Distribution
+
+The `Native distribution` workflow builds and tests:
+
+- macOS arm64 and x64 (deployment target macOS 11).
+- Linux arm64 and x64 using musl targets, without a runtime glibc dependency.
+
+Each artifact contains `<platform>-<arch>/backend`. The assembly job merges all four into `lib/native/`, restores executable permissions, packages with `npm pack --ignore-scripts`, and runs the installed-package test on that exact archive. It uploads the archive but does **not** publish npm packages or create releases.
+
+For a manual assembly after downloading the workflow artifacts:
+
+```sh
+npm run build
+node scripts/assemble-native.mjs native-artifacts
+npm pack --ignore-scripts
+```
+
+`DSH_NATIVE_TARGET` is a development/build setting, not a browser-controlled option. Supported values are `aarch64-apple-darwin`, `x86_64-apple-darwin`, `aarch64-unknown-linux-musl` and `x86_64-unknown-linux-musl`. A normal local build includes only the current platform. Installing it on another architecture fails with an actionable missing-binary error.
+
+Finish active work before switching the desktop application to a different backend. Validation uses isolated state paths and never rewrites the running desktop profile.

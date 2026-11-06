@@ -182,7 +182,7 @@ export default function ChatWorkbench({ api, store }) {
           <h2>What would you like to work on?</h2>
           <p>{agentProfile(provider).name} · {session.cwd.split("/").filter(Boolean).at(-1) || session.cwd}</p>
         </div>}
-        {session && <Transcript session={session} active={active} />}
+        {session && <Transcript session={session} active={active} api={api} />}
         {session?.error && <TurnError><strong>{diagnose(session.error, provider).title}</strong><p>{diagnose(session.error, provider).action}</p><details><summary>Error details</summary>{errorText(session.error)}</details></TurnError>}
       </div>
       <div className="agent-chat-seat">

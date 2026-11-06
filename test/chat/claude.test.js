@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createClaudeProvider } from '../../src/chat/claude.js';
+import { createClaudeProvider } from '../reference/src/chat/claude.js';
 
 const result = (extra = {}) => ({ type: 'result', subtype: 'success', is_error: false, session_id: 'owned', ...extra });
 const assistant = (id, text, extra = {}) => ({ type: 'assistant', uuid: `${id}-${text}`, message: { id, content: [{ type: 'text', text }] }, ...extra });
