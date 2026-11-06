@@ -1,4 +1,4 @@
-# Unified conversations (0.3.0)
+# Unified conversations (0.3.1)
 
 The interface defaults to **English** and uses DSH's semantic light/dark theme, typography and controls. User messages and provider output are never translated or rewritten.
 

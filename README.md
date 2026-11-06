@@ -2,7 +2,7 @@
 
 An **English-default Workspace interface** with DSH, Claude Code and OMP sessions in one sidebar and content area, plus local/SSH machine and legacy terminal management. User messages are never translated or rewritten.
 
-## What's new in 0.3.0
+## What's new in 0.3.1
 
 - Under each **Workspace**, choose **OMP / DSH / Claude Code → + New**. The session inherits that workspace's directory and opens immediately; no separate Session Workbench or second creation form.
 - Agent logos distinguish sessions in the shared list and conversation header. **DSH** keeps its original conversation renderer and model configuration; **Claude Code / OMP** use structured chat with streaming text, tool calls/results, permission decisions and interruption—not terminal output disguised as chat.
@@ -52,12 +52,14 @@ npm pack
 Install the resulting package through the plugin manager of the **same profile as your running GUI**. For an explicitly selected `web` profile:
 
 ```sh
-dsh plugin --profile web add /absolute/path/dsh-remote-agents-0.3.0.tgz
+dsh plugin --profile web add /absolute/path/dsh-remote-agents-0.3.1.tgz
 ```
 
 For the desktop application, use its plugin management entry rather than installing into an unrelated `web` profile. Refresh the existing GUI after the update; no automatic HMR is promised without a matching `dev:web` watcher.
 
-The historical [v0.2.0 release](https://github.com/FrankieeW/dsh-remote-agents/releases/tag/v0.2.0) does **not** include unified chat. Build this revision for 0.3.0; an existing public release is not silently replaced.
+Install the versioned **0.3.1** tarball for this Workspace revision. Repacking the older `0.3.0` tarball at its existing installed path can retain pnpm's old file integrity/cache; a new version and filename avoid that ambiguity.
+
+The historical [v0.2.0 release](https://github.com/FrankieeW/dsh-remote-agents/releases/tag/v0.2.0) does **not** include unified chat. Build this revision for 0.3.1; an existing public release is not silently replaced.
 
 Build artifacts contain a Host ESM entry and a DSH lazy client factory. React is shared with the Host. The pinned Claude SDK remains an ordinary runtime dependency rather than being embedded into the browser bundle.
 
