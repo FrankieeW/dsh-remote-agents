@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { TodoList } from "./chat-todos.jsx";
 import { DIFF_LABELS, MARKDOWN_LABELS, TERMINAL_LABELS } from "./native-labels.js";
-import { describeTool, printable, toolTitle } from "./tool-presentation.js";
+import { describeTool, printable, toolTitle, unifiedHunks } from "./tool-presentation.js";
 import {
   DiffBlock, DisclosureRow, IconApiOutlineRegular, IconBrowseOutlineRegular, IconChecklistOutlineRegular, IconEditOutlineRegular,
   IconGlobeOutlineRegular, IconSearchOutlineRegular, IconSparkleRegular, IconUsersOutlineRegular, MarkdownText, StateDot,
@@ -47,18 +47,23 @@ function ToolBody({ view, running, failed, cwd }) {
       {failed && view.output && <IoCard output={view.output} failed />}
     </>;
   }
-  if (view.patches) return <>{view.patches.map((patch, index) => <div className="agent-chat-patch" key={`${patch.path}:${index}`}>
-    <div className="agent-chat-patch-path">{patch.path}</div>
-    <MarkdownText text={`\`\`\`diff\n${patch.diff}\n\`\`\``} labels={MARKDOWN_LABELS} />
-  </div>)}</>;
+  if (view.patches) return <>{view.patches.map((patch, index) => {
+    const hunks = unifiedHunks(patch.diff);
+    return <div className="agent-chat-patch" key={`${patch.path}:${index}`}>
+      {hunks.length ? hunks.map((hunk, i) => <div key={i}><p className="agent-chat-caption">{hunk.header}</p><DiffBlock className="agent-chat-tool-block" diffs={[{ path: patch.path, oldText: hunk.oldText, newText: hunk.newText }]} labels={DIFF_LABELS} maxLines={9} /></div>) : <>
+        <div className="agent-chat-patch-path">{patch.path}</div>
+        <MarkdownText text={`\`\`\`diff\n${patch.diff}\n\`\`\``} labels={MARKDOWN_LABELS} />
+      </>}
+    </div>;
+  })}</>;
   if (view.todos) return <TodoList todos={view.todos} />;
   const input = Object.keys(view.input).length ? printable(view.input) : "";
   return <IoCard input={input} output={view.output} failed={failed} />;
 }
 
 /** A native DSH tool row: icon, the agent's tool name, a one-line summary, expandable detail. */
-function ToolRow({ tool, cwd }) {
-  const [open, setOpen] = useState(false);
+function ToolRow({ tool, cwd, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen);
   const view = describeTool(tool, { cwd });
   const Icon = ICONS[view.icon] || IconSparkleRegular;
   const running = tool.status === "running";
@@ -77,6 +82,10 @@ function ToolRow({ tool, cwd }) {
       {tool.truncated && <p className="agent-chat-caption">Tool data was truncated to fit the stored transcript.</p>}
     </div>
   </DisclosureRow>;
+}
+
+export function ToolCard({ tool, cwd, defaultOpen = false }) {
+  return <ToolRenderBoundary tool={tool}><ToolRow tool={tool} cwd={cwd} defaultOpen={defaultOpen} /></ToolRenderBoundary>;
 }
 
 function UserMessage({ message }) {

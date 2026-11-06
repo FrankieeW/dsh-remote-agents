@@ -1,10 +1,12 @@
 import { FloatingPanel } from "./floating-panel.jsx";
+import { agentProfile } from "./agent-profiles.js";
 import React, { useEffect, useRef, useState } from 'react';
 import { EFFORTS, PERMISSIONS, DEFAULT_SETTINGS } from '../chat/settings.js';
 import { IconChevronDownOutlineRegular, IconShieldOutlineRegular, IconSlidersTwoOutlineRegular, Tooltip } from './native.js';
 
 /** Session overrides; the CLI remains authoritative about effective settings and model access. */
 export function ChatSettings({ session, api, disabled, onConfigure, saveStatus }) {
+  const profile = agentProfile(session.provider);
   const [open, setOpen] = useState(null);
   const [catalog, setCatalog] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -91,7 +93,7 @@ export function ChatSettings({ session, api, disabled, onConfigure, saveStatus }
     </button>
     {saveStatus && <span className="agent-settings-save" role="status">{saveStatus}</span>}
     {open && <FloatingPanel anchor={container} width={360} placement="top"><section className="agent-chat-settings-panel" onKeyDown={navigate} role="dialog" aria-label={open === 'model' ? 'Choose model' : open === 'effort' ? 'Choose reasoning effort' : 'Choose permissions'}>
-      <header><strong>{open === 'model' ? 'Model' : open === 'effort' ? 'Reasoning effort' : 'Permissions'}</strong>
+      <header><strong>{open === 'model' ? `${profile.name} model` : open === 'effort' ? profile.effortLabel || 'Reasoning effort' : profile.permissionLabel || 'Permissions'}</strong>
         <button type="button" disabled={loading} onClick={() => load(true)}>Refresh CLI</button></header>
       <p className="agent-chat-caption">This session only · Follow CLI uses its configuration</p>
       {saveStatus && <p className="agent-chat-caption" role="status">{saveStatus}</p>}
@@ -103,8 +105,8 @@ export function ChatSettings({ session, api, disabled, onConfigure, saveStatus }
       <div className="agent-chat-settings-options">
         {open === 'model' ? <>
           <button type="button" aria-pressed={settings.model === null} onClick={() => choose({ model: null, effort: null })}><span>Follow CLI</span><small>{defaults.model || 'Use the CLI’s default model'}</small></button>
-          {(catalog?.models || []).filter(m => [m.id, m.label, m.provider].some(v => v?.toLowerCase().includes(search.toLowerCase()))).map(m =>
-            <button type="button" key={m.id} aria-pressed={settings.model === m.id} onClick={() => choose({ model: m.id, effort: null })}><span>{m.label}</span><small>{m.id}</small></button>)}
+          {(catalog?.models || []).filter(m => [m.id, m.label, m.provider].some(v => typeof v === 'string' && v.toLowerCase().includes(search.toLowerCase()))).map(m =>
+            <button type="button" key={m.id} aria-pressed={settings.model === m.id} onClick={() => choose({ model: m.id, effort: null })}><span>{m.label}</span><small>{session.provider === 'omp' && m.provider ? `${m.provider} · ${m.id}` : m.id}</small></button>)}
           {search.trim() && !catalog?.models.some(m => m.id === search.trim()) && <button type="button" onClick={() => choose({ model: search.trim(), effort: null })}><span>Use “{search.trim()}”</span><small>Custom model ID or CLI alias</small></button>}
         </> : options.map(option => <button type="button" key={option.id || 'cli'} disabled={option.disabled} title={option.reason}
           aria-pressed={(open === 'effort' ? settings.effort : settings.permissions) === option.id}

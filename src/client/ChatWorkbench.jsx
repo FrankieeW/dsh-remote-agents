@@ -1,7 +1,9 @@
 import { createPoller } from "./polling.js";
 import { diagnose } from "./diagnostics.js";
 import { ChatSettings } from "./chat-settings.jsx";
-import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { AgentViewTabs, AgentWelcome, AgentDetailView } from "./agent-views.jsx";
+import { agentViewData } from "./agent-view-data.js";
+import React, { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ChatHeader } from "./chat-header.jsx";
 import { Composer } from "./chat-composer.jsx";
 import { Transcript, TurnError } from "./chat-messages.jsx";
@@ -53,6 +55,8 @@ export default function ChatWorkbench({ api, store }) {
   const [busy, setBusy] = useState("");
   const [actionError, setActionError] = useState("");
   const [settingsStatus, setSettingsStatus] = useState("");
+  const [viewState, setViewState] = useState({ id: '', view: 'chat' });
+  const viewsId = useId();
   const [closeTarget, setCloseTarget] = useState(null);
   const alive = useRef(false);
   const lock = useRef(false);
@@ -62,15 +66,18 @@ export default function ChatWorkbench({ api, store }) {
   const setDrafts = store.setDrafts;
 
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-  useEffect(() => { setActionError(""); setSettingsStatus(""); setCloseTarget(null); autoScroll.current = true; }, [selectedId]);
-  useEffect(() => {
-    const node = scroller.current;
-    if (node && autoScroll.current) node.scrollTop = node.scrollHeight;
-  }, [detail]);
+  useEffect(() => { setActionError(""); setSettingsStatus(""); setCloseTarget(null); setViewState({ id: selectedId, view: 'chat' }); autoScroll.current = true; }, [selectedId]);
 
   const session = detail?.id === selectedId ? detail : null;
   const summary = sessions.find((item) => item.id === selectedId);
   const provider = session?.provider || summary?.provider;
+  const view = viewState.id === selectedId ? viewState.view : 'chat';
+  const changeView = value => { setViewState({ id: selectedId, view: value }); autoScroll.current = value === 'chat'; };
+  const viewData = useMemo(() => agentViewData(session), [session]);
+  useEffect(() => {
+    const node = scroller.current;
+    if (node && view === 'chat' && autoScroll.current) node.scrollTop = node.scrollHeight;
+  }, [detail, view]);
   const remote = session?.machineId && session.machineId !== "local";
   const [remoteRuntimes, setRemoteRuntimes] = useState(null);
   useEffect(() => {
@@ -170,24 +177,25 @@ export default function ChatWorkbench({ api, store }) {
   }
   return <main className="agent-chat" data-agent={provider}>
     <ChatHeader session={session} summary={summary} provider={provider} machine={machines?.find(m => m.id === session?.machineId)} busy={!!busy} onExport={async format => { await act("Export conversation", async () => { const file = await api("chatExport", { id: session.id, format }); const url = URL.createObjectURL(new Blob([file.content], { type: file.mime })); const a = document.createElement("a"); a.href = url; a.download = file.filename; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }); }} onClose={() => setCloseTarget({ id: session.id, name: session.name })} />
-    <div className={`agent-chat-scroll${session && !session.messages.length ? " is-empty" : ""}`} ref={scroller} aria-label="Conversation messages"
+    <AgentViewTabs provider={provider} view={view} onChange={changeView} data={viewData} idPrefix={viewsId} />
+    <div className={`agent-chat-scroll${session && !session.messages.length && view === 'chat' ? " is-empty" : ""}`} ref={scroller} aria-label="Conversation messages"
       onScroll={(event) => { const node = event.currentTarget; autoScroll.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80; }}>
-      <div className="agent-chat-column">
+      <div className="agent-chat-column" role="tabpanel" id={`${viewsId}-panel`} aria-labelledby={`${viewsId}-${view}`}>
         {getError && <Notice error detail={session ? "Showing the last loaded messages while polling retries." : ""}>{getError}</Notice>}
         {session?.persistenceError && <Notice error>Could not save session history: {session.persistenceError}</Notice>}
         {session?.historyTruncated && <Notice>Earlier messages have been truncated. Only the retained history is shown.</Notice>}
         {!session && <p role="status" className="agent-chat-placeholder">Loading messages…</p>}
-        {session && !session.messages.length && <div className="agent-chat-hero">
+        {session && !session.messages.length && view === 'chat' && <div className="agent-chat-hero">
           <AgentLogo provider={provider} size={32} decorative />
           <h2>What would you like to work on?</h2>
-          <p>{agentProfile(provider).name} · {session.cwd.split("/").filter(Boolean).at(-1) || session.cwd}</p>
+          <AgentWelcome provider={provider} workspace={session.cwd.split("/").filter(Boolean).at(-1) || session.cwd} onDraft={text => setDrafts(previous => ({ ...previous, [selectedId]: text }))} />
         </div>}
-        {session && <Transcript session={session} active={active} api={api} />}
+        {session && (view === 'chat' ? <Transcript session={session} active={active} api={api} /> : <AgentDetailView key={`${session.id}:${view}`} session={session} view={view} data={viewData} onChat={() => changeView('chat')} />)}
         {session?.error && <TurnError><strong>{diagnose(session.error, provider).title}</strong><p>{diagnose(session.error, provider).action}</p><details><summary>Error details</summary>{errorText(session.error)}</details></TurnError>}
       </div>
       <div className="agent-chat-seat">
         {actionError && <Notice error detail="Messages are not retried automatically. Your unsent text is preserved.">{actionError}</Notice>}
-        <TodoDock todos={todos} />
+        {view !== 'tasks' && <TodoDock todos={todos} label={agentProfile(provider).taskLabel || 'To-dos'} />}
         {session?.pendingApprovals.map((approval) => <ApprovalCard key={approval.id} approval={approval} provider={provider}
           cwd={session.cwd} busy={!!busy} onDecide={approve} />)}
         <Composer provider={provider} draft={draft} disabled={!session || closed} closed={closed} active={active} canSend={canSend}

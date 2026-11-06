@@ -159,3 +159,12 @@ test("malformed and prototype-named todo statuses normalize without coercion", (
   assert.deepEqual(describeTool(tool).todos.map(item => item.status), ["pending", "pending"]);
   assert.equal(latestTodos([{tools:[tool]}]).length, 2);
 });
+
+test('Codex unified hunks use native diff excerpts without inventing omitted lines',async()=>{
+ const {unifiedHunks}=await import('../src/client/tool-presentation.js');
+ assert.deepEqual(unifiedHunks('--- a/file\n+++ b/file\n@@ -10,2 +10,3 @@\n context\n-old\n+new\n+extra\n'),[{header:'@@ -10,2 +10,3 @@',oldText:'context\nold',newText:'context\nnew\nextra'}]);
+ assert.equal(unifiedHunks('@@ -1,3 +1,1 @@\n-old\n+new').length,0);
+ assert.equal(unifiedHunks('Binary files differ').length,0);
+ assert.equal(unifiedHunks('-old\n+new').length,0);
+ assert.equal(unifiedHunks('@@ -0,0 +1,1 @@\n+created').length,1);
+});

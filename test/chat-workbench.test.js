@@ -300,10 +300,10 @@ test("Codex renders its plans, command output, patches and resume action in nati
     await h.select("codex");
     assert.equal(document.querySelector("textarea").placeholder, "Ask Codex…");
     assert.ok(h.button("Copy resume command"));
-    assert.match(document.querySelector('[aria-label="To-dos"]').textContent, /1 in progress/);
-    await h.expandTool("commandExecution");
+    assert.match(document.querySelector('section[aria-label="Plan"]').textContent, /1 in progress/);
+    await h.expandTool("Run command");
     assert.match(document.querySelector('[data-terminal]').textContent, /npm test\npassed/);
-    await h.expandTool("fileChange");
+    await h.expandTool("File changes");
     assert.equal(document.querySelector('.agent-chat-patch-path').textContent, "a.js");
     assert.match(document.querySelector('.agent-chat-patch [data-markdown]').textContent, /-old\n\+new/);
   } finally { await h.cleanup(); }
@@ -399,4 +399,30 @@ test('OMP truncation identifies the retained tool limit and loads original pages
     await h.click('Read larger record for read');assert.match(document.body.textContent,/Complete tool result/);
     assert.ok(document.querySelector('textarea'));
   }finally{await h.cleanup();}
+});
+
+for(const provider of ['claude','codex','omp'])test(`${provider} native view tabs preserve drafts and suggestions never send`,async()=>{
+ const state={...fixture('views'),provider},sends=[];
+ const h=await mount(async(method,payload)=>{if(method==='chatList')return{sessions:[state],providers:[{id:provider,available:true}]};if(method==='chatGet')return structuredClone(state);if(method==='chatSend'){sends.push(payload);return{accepted:true};}throw Error(method);});
+ try{
+  await h.select('views');const expected={claude:['Chat','Tools','To-dos'],codex:['Chat','Plan','Changes'],omp:['Chat','Tasks','Tools']}[provider];
+  assert.deepEqual([...document.querySelectorAll('[role="tab"]')].map(t=>t.getAttribute('aria-label')),expected);
+  const suggestion=document.querySelector('.agent-welcome-suggestions button');await act(async()=>suggestion.click());assert.equal(sends.length,0);const textarea=document.querySelector('textarea'),draft=textarea.value;assert.ok(draft.length>20);
+  await act(async()=>document.querySelectorAll('[role="tab"]')[1].click());assert.equal(document.querySelector('textarea').value,draft);assert.ok(document.querySelector('textarea')===textarea);
+  await act(async()=>document.querySelector('[role="tab"][aria-selected="true"]').dispatchEvent(new h.dom.window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true})));
+  assert.equal(document.querySelector('[role="tab"][aria-selected="true"]').getAttribute('aria-label'),expected[2]);assert.equal(sends.length,0);
+  await h.tick(5000);assert.equal(document.querySelector('[role="tab"][aria-selected="true"]').getAttribute('aria-label'),expected[2]);
+  await h.select('');await h.select('views');assert.equal(document.querySelector('[role="tab"][aria-selected="true"]').getAttribute('aria-label'),'Chat');assert.equal(document.querySelector('textarea').value,draft);
+ }finally{await h.cleanup();}
+});
+
+test('Codex changes/plan views and OMP phased tasks render retained data while keeping approvals visible',async()=>{
+ let state={...fixture('specialized'),provider:'codex',status:'waiting',pendingApprovals:[{id:'approve',title:'Allow command?',details:{toolName:'commandExecution',input:{command:'npm test'}}}],messages:[{id:'a',role:'assistant',text:'Implementation ready',tools:[{id:'plan',name:'update_plan',status:'done',input:{todos:[{content:'Verify behavior',status:'pending'}]}},{id:'patch',name:'fileChange',status:'done',input:{changes:[{path:'/fixture/a.js',diff:'-old\n+new'}]}}]}]};
+ const h=await mount(async method=>{if(method==='chatList')return{sessions:[state],providers:[{id:'codex',available:true},{id:'omp',available:true}]};if(method==='chatGet')return structuredClone(state);throw Error(method);});
+ try{
+  await h.select('specialized');await h.click('Changes');assert.match(document.querySelector('.agent-detail-view').textContent,/a.js/);assert.match(document.querySelector('.agent-chat-patch').textContent,/-old\n\+new/);assert.ok(document.querySelector('[aria-label="Pending approval"]'));assert.ok(h.button('Stop generating'));
+  await h.click('Plan');assert.match(document.querySelector('.agent-detail-view').textContent,/Verify behavior/);
+  state={...state,id:'omp-special',provider:'omp',status:'idle',pendingApprovals:[],messages:[{id:'m',role:'assistant',text:'Ready',tools:[{id:'todo',name:'todo',status:'done',input:{op:'read'},result:{details:{phases:[{name:'Implement',tasks:[{content:'Write integration',status:'completed'}]},{name:'Verify',tasks:[{content:'Run checks',status:'pending'}]}]}}}]}]};
+  await h.select('omp-special');await h.click('Tasks');assert.deepEqual([...document.querySelectorAll('.agent-detail-view .agent-chat-todo-phase')].map(n=>n.textContent),['Implement','Verify']);assert.match(document.querySelector('.agent-detail-view').textContent,/Run checks/);
+ }finally{await h.cleanup();}
 });

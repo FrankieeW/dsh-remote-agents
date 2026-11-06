@@ -433,3 +433,111 @@ test("Rust resolves standalone Node for the Claude bridge when the host is Elect
     "CLAUDE_NATIVE_OK",
   );
 });
+
+test("automatic names follow the first prompt, preserve manual names, and survive restart", async (t) => {
+  const f = await fixture(t),
+    session = await f.call("chatCreate", { provider: "codex", cwd: f.root });
+  assert.equal(session.name, "New conversation");
+  assert.equal(session.nameSource, "auto");
+  const prompt = "为左侧栏添加可折叠工具分组并保存用户设置";
+  await f.call("chatSend", {
+    id: session.id,
+    text: prompt,
+    requestId: "title-one",
+  });
+  const named = await settled(f, session.id);
+  assert.ok(prompt.startsWith(named.name));
+  assert.ok(Buffer.byteLength(named.name) <= 40);
+  assert.equal(named.nameSource, "auto");
+  assert.equal(named.messages[0].text, prompt);
+  await f.call("chatMetadata", { id: session.id, name: "我的发布计划" });
+  assert.equal(
+    (
+      await f.call("chatSend", {
+        id: session.id,
+        text: prompt,
+        requestId: "title-one",
+      })
+    ).duplicate,
+    true,
+  );
+  await f.call("chatSend", {
+    id: session.id,
+    text: "WAIT",
+    requestId: "title-two",
+  });
+  await f.call("chatMetadata", { id: session.id, name: "手动标题优先" });
+  await f.call("chatInterrupt", { id: session.id });
+  await f.restart();
+  assert.equal(
+    (await f.call("chatGet", { id: session.id })).name,
+    "手动标题优先",
+  );
+  const restored = await f.call("chatMetadata", {
+    id: session.id,
+    autoName: true,
+  });
+  assert.equal(restored.name, named.name);
+  assert.equal(restored.nameSource, "auto");
+  await assert.rejects(
+    f.call("chatMetadata", {
+      id: session.id,
+      name: "ambiguous",
+      autoName: true,
+    }),
+    { code: "INVALID_INPUT" },
+  );
+  const manual = await f.call("chatCreate", {
+    provider: "omp",
+    cwd: f.root,
+    name: "Pinned project",
+  });
+  await f.call("chatSend", {
+    id: manual.id,
+    text: "hello",
+    requestId: "manual",
+  });
+  assert.equal((await settled(f, manual.id)).name, "Pinned project");
+});
+
+test("existing default titles are backfilled without changing custom names or messages", async (t) => {
+  const f = await fixture(t);
+  await f.backend.close();
+  await mkdir(join(f.root, "state"), { recursive: true });
+  const make = (id, provider, name) => ({
+    id,
+    provider,
+    name,
+    cwd: f.root,
+    machineId: "local",
+    status: "idle",
+    settings: { model: null, effort: null, permissions: "cli" },
+    messages: [
+      {
+        id: id + "-message",
+        role: "user",
+        text: "整理工作区并补充测试",
+        tools: [],
+      },
+    ],
+    requests: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+  const sessions = [
+    make("legacy-omp", "omp", "omp chat"),
+    make("legacy-codex", "codex", "My custom title"),
+  ];
+  await writeFile(
+    join(f.root, "state", "conversations.json"),
+    JSON.stringify({ version: 1, sessions }),
+  );
+  await f.restart();
+  const auto = await f.call("chatGet", { id: "legacy-omp" }),
+    manual = await f.call("chatGet", { id: "legacy-codex" });
+  assert.equal(auto.name, "整理工作区并补充测试");
+  assert.equal(auto.nameSource, "auto");
+  assert.equal(manual.name, "My custom title");
+  assert.equal(manual.nameSource, "manual");
+  assert.deepEqual(auto.messages, sessions[0].messages);
+});

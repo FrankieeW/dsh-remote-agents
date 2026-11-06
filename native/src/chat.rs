@@ -1,3 +1,4 @@
+use crate::titles;
 use crate::{common::*, history, settings};
 use fs2::FileExt;
 use serde_json::{Value, json};
@@ -104,6 +105,7 @@ impl ChatStore {
                 }
             }
             session.as_object_mut().unwrap().remove("pendingApprovals");
+            changed |= titles::migrate(session);
             if matches!(s(session, "status"), "running" | "waiting") {
                 session["status"] = json!("interrupted");
                 session["error"] = json!(
@@ -165,6 +167,7 @@ impl ChatStore {
                         "id",
                         "provider",
                         "name",
+                        "nameSource",
                         "cwd",
                         "machineId",
                         "settings",
@@ -210,14 +213,18 @@ impl ChatStore {
         let settings =
             settings::validate(provider, p.get("settings").unwrap_or(&settings::defaults()))?;
         let name = if p.get("name").is_some() {
-            required(p, "name", 100)?
+            let name = required(p, "name", 100)?;
+            if name.trim().is_empty() {
+                return err("INVALID_INPUT", "Empty session name");
+            }
+            name.trim().to_owned()
         } else {
-            format!("{provider} chat")
+            titles::PLACEHOLDER.into()
         };
         if self.state["sessions"].as_array().unwrap().len() >= 256 {
             return err("STATE_LIMIT", "Maximum session count reached");
         }
-        let v = json!({"id":id(),"provider":provider,"name":name,"cwd":cwd,"machineId":p.get("machineId").cloned().unwrap_or(json!("local")),"settings":settings,"settingsRevision":0,"status":"idle","messages":[],"requests":[],"createdAt":now(),"updatedAt":now()});
+        let v = json!({"id":id(),"provider":provider,"name":name,"nameSource":if p.get("name").is_some(){"manual"}else{"auto"},"cwd":cwd,"machineId":p.get("machineId").cloned().unwrap_or(json!("local")),"settings":settings,"settingsRevision":0,"status":"idle","messages":[],"requests":[],"createdAt":now(),"updatedAt":now()});
         self.state["sessions"]
             .as_array_mut()
             .unwrap()
@@ -277,12 +284,22 @@ impl ChatStore {
         if p["archived"] == true && self.live.contains_key(sid) {
             return err("BUSY", "Stop the turn before archiving");
         }
+        if p.get("autoName").is_some() {
+            if p["autoName"] != true || p.get("name").is_some() {
+                return err(
+                    "INVALID_INPUT",
+                    "Choose an explicit name or automatic naming",
+                );
+            }
+            titles::use_automatic(&mut session);
+        }
         if p.get("name").is_some() {
             let name = required(p, "name", 100)?;
             if name.trim().is_empty() {
                 return err("INVALID_INPUT", "Empty session name");
             }
-            session["name"] = json!(name.trim())
+            session["name"] = json!(name.trim());
+            session["nameSource"] = json!("manual");
         }
         for k in ["archived", "pinned"] {
             if let Some(v) = p.get(k) {
@@ -356,6 +373,11 @@ impl ChatStore {
         let messages = session["messages"].as_array_mut().unwrap();
         messages.push(json!({"id":id(),"role":"user","text":text,"tools":[],"createdAt":now()}));
         messages.push(assistant);
+        titles::seed(session);
+        if session["nameSource"] == "auto" {
+            titles::use_automatic(session);
+        }
+        let messages = session["messages"].as_array_mut().unwrap();
         if messages.len() > 200 {
             messages.drain(..messages.len() - 200);
             session["historyTruncated"] = json!(true)

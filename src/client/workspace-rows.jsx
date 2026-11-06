@@ -96,12 +96,13 @@ function SessionMenu({ row, busy, onAction, onRename, onOpenChange }) {
   const toggle = (value) => { setOpen(value); onOpenChange(value); };
   const items = [
     { id: "rename", label: "Rename", icon: <IconEditOutlineRegular /> },
+    ...(row.provider !== "native" ? [{ id: "auto-name", label: "Use automatic title", icon: <IconEditOutlineRegular /> }] : []),
     { id: "fork", label: "Fork", icon: <IconBranchOutlineRegular /> },
     { id: row.pinned ? "unpin" : "pin", label: row.pinned ? "Unpin" : "Pin", icon: <IconPinOutlineRegular /> },
     row.archived
       ? { id: "unarchive", label: "Unarchive", icon: <IconUnarchiveOutlineRegular /> }
       : { id: "archive", label: "Archive", icon: <IconArchiveOutlineRegular /> },
-  ].filter(item => row.provider === "native" || item.id !== "fork").map((item) => ({ ...item, disabled: busy || (item.id === "archive" && ["running", "waiting"].includes(row.status)) }));
+  ].filter(item => row.provider === "native" || item.id !== "fork").map((item) => ({ ...item, disabled: busy || (item.id === "auto-name" && row.nameSource === "auto") || (item.id === "archive" && ["running", "waiting"].includes(row.status)) }));
   return <Menu open={open} onClose={() => toggle(false)} items={items} align="start" dense portal
     onSelect={(id) => { toggle(false); if (id === "rename") onRename(); else onAction(id, row.id); }}
     anchor={<button type="button" className="agent-workspace-row-button" aria-label={`Session actions for ${row.name}`}

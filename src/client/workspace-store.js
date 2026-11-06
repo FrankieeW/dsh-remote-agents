@@ -44,7 +44,7 @@ export function createWorkspaceStore(api) {
     refresh() { void catalogPoller?.refresh(); void sessionPoller?.refresh(); },
     search: query => api("chatSearch", { query }),
     async sessionAction(action, id, value) {
-      const patch = action === 'rename' ? { name: value } : action === 'pin' || action === 'unpin' ? { pinned: action === 'pin' } : { archived: action === 'archive' };
+      const patch = action === 'rename' ? { name: value } : action === 'auto-name' ? { autoName: true } : action === 'pin' || action === 'unpin' ? { pinned: action === 'pin' } : { archived: action === 'archive' };
       const result = await api("chatMetadata", { id, ...patch }); store.update(result); return result;
     },
     async removeWorkspace(workspaceId) { await api("workspaceRemove", { workspaceId }); await store.loadWorkspaces(); },
@@ -61,8 +61,8 @@ export function createWorkspaceStore(api) {
     setDrafts(update) { publish({ drafts: update(snapshot.drafts) }); },
     update(session) {
       revisions.set(session.id, ++generation);
-      const { id, provider, name, cwd, machineId, status, createdAt, updatedAt, error, archived, pinned, settingsRevision } = session;
-      const summary = { id, provider, name, cwd, machineId, status, createdAt, updatedAt, error, archived, pinned, settingsRevision };
+      const { id, provider, name, nameSource, cwd, machineId, status, createdAt, updatedAt, error, archived, pinned, settingsRevision } = session;
+      const summary = { id, provider, name, nameSource, cwd, machineId, status, createdAt, updatedAt, error, archived, pinned, settingsRevision };
       publish({ sessions: [summary, ...snapshot.sessions.filter((item) => item.id !== id)] });
     },
     start() {

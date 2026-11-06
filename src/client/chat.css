@@ -363,3 +363,27 @@
 .agent-original-history button:disabled { opacity: .5; cursor: default; }
 .agent-original-history-tools, .agent-original-tool-detail pre { max-height: 420px; overflow: auto; }
 .agent-original-history pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 420px; overflow: auto; }
+
+/* Desktop-style view tabs; per-agent content shares DSH's semantic tokens. */
+.agent-view-tabs { display: flex; flex: none; align-items: center; gap: 4px; padding: 0 24px; border-bottom: .5px solid var(--dsw-alias-border-l3); overflow-x: auto; }
+.agent-view-tabs [role="tab"] { display: inline-flex; align-items: center; gap: 7px; padding: 10px 12px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--dsw-alias-label-tertiary); white-space: nowrap; cursor: pointer; font: inherit; font-size: 13px; }
+.agent-view-tabs [aria-selected="true"] { color: var(--dsw-alias-label-primary); border-bottom-color: var(--dsw-alias-label-primary); }
+.agent-view-count { font-size: 11px; color: var(--dsw-alias-label-caption); }
+.agent-welcome-details { display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 620px; text-align: center; }
+.agent-welcome-details > p { color: var(--dsw-alias-label-secondary); font-size: 14px; }
+.agent-welcome-details > small { color: var(--dsw-alias-label-tertiary); }
+.agent-welcome-suggestions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 12px; }
+.agent-welcome-suggestions button { display: inline-flex; align-items: center; gap: 8px; padding: 9px 12px; border: .5px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-lg); background: transparent; color: var(--dsw-alias-label-secondary); font-size: 13px; cursor: pointer; }
+.agent-welcome-suggestions button:hover { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-l1); }
+.agent-detail-view { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.agent-detail-view > header { display: flex; align-items: center; gap: 9px; color: var(--dsw-alias-label-secondary); }
+.agent-detail-view h3 { color: var(--dsw-alias-label-primary); font-size: 16px; font-weight: 500; }
+.agent-detail-empty { color: var(--dsw-alias-label-tertiary); padding: 24px 0; }
+.agent-detail-records { display: flex; flex-direction: column; gap: 10px; }
+.agent-detail-view .agent-chat-todo-list { max-height: none; overflow-y: visible; padding: 12px; border: .5px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-lg); }
+.agent-chat-todo-phase { list-style: none; font-size: 12px; font-weight: 600; color: var(--dsw-alias-label-secondary); margin: 8px 0 4px; }
+.agent-tool-filters { display: flex; flex-wrap: wrap; gap: 4px; }
+.agent-tool-filters button, .agent-detail-more { border: .5px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-md); background: transparent; padding: 5px 10px; color: var(--dsw-alias-label-tertiary); cursor: pointer; font-size: 12px; }
+.agent-tool-filters [aria-pressed="true"] { color: var(--dsw-alias-label-primary); border-color: var(--dsw-alias-label-caption); }
+.agent-text-action { border: 0; background: transparent; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; }
+@media (max-width: 640px) { .agent-view-tabs { padding-inline: 12px; } .agent-welcome-suggestions { flex-direction: column; align-items: stretch; } }

@@ -7,7 +7,7 @@ import { Button, DiffBlock, IconShieldOutlineRegular } from "./native.js";
 /** Claude Code sends `{toolName, input}`: preview it with the same native views as tool rows. */
 function requestPreview(provider, approval, cwd) {
   const details = approval.details;
-  if (provider !== "claude" || !details || typeof details.toolName !== "string") return null;
+  if (!details || typeof details.toolName !== "string") return null;
   return describeTool({ name: details.toolName, input: details.input, status: "running" }, { cwd });
 }
 
