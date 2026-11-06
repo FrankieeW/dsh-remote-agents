@@ -53,9 +53,9 @@ export class NativeBackend {
         this.pending.clear();
       };
       child.on("error", () => fail("Could not start the Rust backend"));
-      child.on("exit", () => {
+      child.on("exit", (code, signal) => {
         fail(
-          "Rust backend exited; check the conversation before retrying an unconfirmed action.",
+          `Rust backend exited (${signal || code}); check the conversation before retrying an unconfirmed action.`,
         );
         if (this.child === child) {
           this.child = null;
@@ -105,7 +105,13 @@ export class NativeBackend {
         {
           ...this.config,
           pluginVersion: packageInfo.version,
-          nodeExecutable: process.execPath,
+          // Electron's process.execPath is the application, not a Node CLI.
+          // Let Rust discover a standalone Node executable in that environment.
+          nodeExecutable: Object.hasOwn(this.config, "nodeExecutable")
+            ? this.config.nodeExecutable
+            : process.versions.electron
+              ? null
+              : process.execPath,
           claudeBridge:
             this.config.claudeBridge ||
             fileURLToPath(new URL("./claude-bridge.js", import.meta.url)),

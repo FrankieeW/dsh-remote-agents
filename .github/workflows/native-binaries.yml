@@ -28,7 +28,6 @@ jobs:
     env:
       DSH_NATIVE_TARGET: ${{ matrix.target }}
       MACOSX_DEPLOYMENT_TARGET: '11.0'
-      CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
       CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
     steps:
       - uses: actions/checkout@v4
@@ -40,6 +39,11 @@ jobs:
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y musl-tools
       - run: npm ci --ignore-scripts
+      - run: npm run build
+      - name: Verify native executable startup
+        run: |
+          file lib/native/${{ matrix.platform }}/backend
+          lib/native/${{ matrix.platform }}/backend --version
       - run: npm run check
       - run: npm run test:package
       - uses: actions/upload-artifact@v4

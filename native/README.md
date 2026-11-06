@@ -47,3 +47,9 @@ npm pack --ignore-scripts
 `DSH_NATIVE_TARGET` is a development/build setting, not a browser-controlled option. Supported values are `aarch64-apple-darwin`, `x86_64-apple-darwin`, `aarch64-unknown-linux-musl` and `x86_64-unknown-linux-musl`. A normal local build includes only the current platform. Installing it on another architecture fails with an actionable missing-binary error.
 
 Finish active work before switching the desktop application to a different backend. Validation uses isolated state paths and never rewrites the running desktop profile.
+
+On Electron hosts, the application executable is not used as a Node CLI. The
+Rust Claude transport locates a standalone `node` via PATH and conventional
+installation locations (or the trusted host's `nodeExecutable` override). This
+requires Node.js 22+ for Claude's SDK bridge on desktop hosts; Codex and OMP do
+not use that bridge. No extra desktop application is launched during discovery.

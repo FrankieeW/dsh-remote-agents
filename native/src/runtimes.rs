@@ -571,11 +571,12 @@ async fn claude(
     mut controls: mpsc::Receiver<Control>,
     tx: mpsc::Sender<Control>,
 ) -> Result<()> {
-    let node = required(&ctx.config, "nodeExecutable", 4096)?;
     let bridge = required(&ctx.config, "claudeBridge", 4096)?;
     let local = Host {
         machine: json!({"type":"local"}),
     };
+    let node = local.executable("node", ctx.config["nodeExecutable"].as_str()).await?
+        .ok_or_else(|| Error::new("UNSUPPORTED", "Claude SDK transport requires a standalone Node.js executable; install Node.js 22+ or configure nodeExecutable on the host"))?;
     let mut wire = Wire::spawn(
         &local,
         &node,

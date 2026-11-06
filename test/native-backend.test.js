@@ -402,3 +402,22 @@ test("Rust rich dialogs are denied and provider errors remain explicit", async (
   await f.call("chatSend", { id: s.id, text: "ERROR", requestId: "error" });
   assert.match((await settled(f, s.id, "error")).error, /Fixture quota error/);
 });
+
+test("Rust resolves standalone Node for the Claude bridge when the host is Electron", async (t) => {
+  const f = await fixture(t);
+  f.config.nodeExecutable = null;
+  await f.restart();
+  const session = await f.call("chatCreate", {
+    provider: "claude",
+    cwd: f.root,
+  });
+  await f.call("chatSend", {
+    id: session.id,
+    text: "hello",
+    requestId: "electron-fallback",
+  });
+  assert.equal(
+    (await settled(f, session.id)).messages.at(-1).text,
+    "CLAUDE_NATIVE_OK",
+  );
+});
