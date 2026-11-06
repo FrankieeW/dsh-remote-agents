@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { NativeBackend } from "../src/native/client.js";
+import { PERMISSIONS } from "../src/chat/settings.js";
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "dsh-native-tests-"));
@@ -33,7 +34,10 @@ async function fixture(t) {
     "omp",
     await readFile("scripts/fixtures/omp-process.cjs", "utf8"),
   );
-  const claude = await make("claude", "console.log('2.1.318')");
+  const claude = await make(
+    "claude",
+    await readFile("scripts/fixtures/claude-process.cjs", "utf8"),
+  );
   const config = {
     statePath: join(root, "state", "fleet.json"),
     codexExecutable: codex,
@@ -235,7 +239,7 @@ test("Rust fleet preview stays read-only, atomic import binds exact sources and 
         {
           id: "a".repeat(32),
           label: "Remote",
-          session: "dev",
+          session: "dev.session",
           enabled: true,
           target: "ssh://dev@server.example:2222",
           password: "PRIVATE",
@@ -358,11 +362,19 @@ test("Rust OMP history indexes more than 16 tools and never returns provider cre
 
 test("Rust CLI options retain provider catalogs and managed Codex restrictions", async (t) => {
   const f = await fixture(t);
-  for (const provider of ["codex", "omp"]) {
+  for (const provider of ["codex", "omp", "claude"]) {
     const s = await f.call("chatCreate", { provider, cwd: f.root });
     const options = await f.call("chatOptions", { id: s.id });
     assert.ok(options.models.length > 0);
     assert.equal(options.provider, provider);
+    assert.deepEqual(
+      options.permissions.map(({ id, label, description }) => ({
+        id,
+        label,
+        description,
+      })),
+      PERMISSIONS[provider],
+    );
     if (provider === "codex")
       assert.equal(
         options.permissions.find((p) => p.id === "yolo").disabled,

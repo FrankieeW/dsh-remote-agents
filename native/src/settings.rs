@@ -1,51 +1,28 @@
 use crate::common::*;
 use serde_json::{Value, json};
+fn contract() -> &'static Value {
+    static DATA: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+    DATA.get_or_init(|| {
+        serde_json::from_str(include_str!("../agent-settings.json"))
+            .expect("compiled settings contract is valid JSON")
+    })
+}
 pub fn defaults() -> Value {
-    json!({"model":null,"effort":null,"permissions":"cli"})
+    contract()["defaults"].clone()
 }
 pub fn efforts(provider: &str) -> Vec<&'static str> {
-    match provider {
-        "codex" => vec!["none", "minimal", "low", "medium", "high", "xhigh", "max"],
-        "claude" => vec!["low", "medium", "high", "xhigh", "max"],
-        "omp" => vec![
-            "off", "minimal", "low", "medium", "high", "xhigh", "max", "auto",
-        ],
-        _ => vec![],
-    }
+    contract()["efforts"][provider]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect()
 }
 pub fn permissions(provider: &str) -> Value {
-    let options = match provider {
-        "codex" => vec![
-            ("cli", "Follow CLI"),
-            ("read-only", "Read only"),
-            ("workspace-write", "Workspace write"),
-            ("safe", "Ask before running"),
-            ("yolo", "Full access · YOLO"),
-        ],
-        "claude" => vec![
-            ("cli", "Follow CLI"),
-            ("default", "Default"),
-            ("acceptEdits", "Accept edits"),
-            ("plan", "Plan"),
-            ("auto", "Auto"),
-            ("dontAsk", "Don’t ask"),
-            ("bypassPermissions", "Bypass permissions · YOLO"),
-        ],
-        "omp" => vec![
-            ("cli", "Follow CLI"),
-            ("always-ask", "Always ask"),
-            ("always-ask-cached", "Ask and remember"),
-            ("write", "Workspace write"),
-            ("yolo", "YOLO"),
-        ],
-        _ => vec![],
-    };
-    json!(
-        options
-            .into_iter()
-            .map(|(id, label)| json!({"id":id,"label":label}))
-            .collect::<Vec<_>>()
-    )
+    contract()["permissions"]
+        .get(provider)
+        .cloned()
+        .unwrap_or(json!([]))
 }
 pub fn validate(provider: &str, v: &Value) -> Result<Value> {
     let obj = v

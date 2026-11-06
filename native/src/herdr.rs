@@ -102,10 +102,17 @@ pub fn preview(input: &Value, state: &Value) -> Result<Value> {
         warnings.push(json!("Credentials, commands, environment and native sessions are not migrated; only static SSH connection metadata is used."));
         for (pn, p) in a.iter().enumerate() {
             let valid = s(p, "id").len() == 32
-                && s(p, "id").bytes().all(|c| c.is_ascii_hexdigit())
+                && s(p, "id")
+                    .bytes()
+                    .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
                 && text(&p["label"], 128, false).is_ok()
                 && s(p, "label").len() <= 128
-                && safe_id(s(p, "session"))
+                && !s(p, "session").is_empty()
+                && s(p, "session").len() <= 64
+                && ![".", ".."].contains(&s(p, "session"))
+                && s(p, "session")
+                    .bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || b"_.-".contains(&c))
                 && p["enabled"].is_boolean();
             if !valid || p["enabled"] != true {
                 warnings.push(json!(format!(
