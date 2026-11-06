@@ -52,6 +52,24 @@ export function groupWorkspaceSessions(workspaces, nativeState, externalSessions
   return groups;
 }
 
+function workspaceForest(groups, nested) {
+  const nodes = groups.map(group => ({ ...group, children: [] }));
+  if (!nested) return nodes;
+  const roots = [];
+  const pathOf = node => node.workspace.path.replace(/\/+$/, '') || '/';
+  for (const node of nodes) {
+    const path = pathOf(node);
+    let parent;
+    for (const candidate of nodes) {
+      const ancestor = pathOf(candidate);
+      if (candidate !== node && candidate.workspace.path && ancestor !== path && path.startsWith(ancestor === '/' ? '/' : ancestor + '/')
+        && (!parent || ancestor.length > pathOf(parent).length)) parent = candidate;
+    }
+    if (parent) parent.children.push(node); else roots.push(node);
+  }
+  return roots;
+}
+
 function NativeActions({ row, busy, onAction }) {
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState(row.name);
@@ -76,8 +94,10 @@ function NativeActions({ row, busy, onAction }) {
   </details>;
 }
 
-function WorkspaceGroup({ group, rows, providers, selectedId, nativeSelectedId, externalActive, onCreate, onOpen, onNativeAction, pending }) {
-  const [collapsed, setCollapsed] = useState(false);
+function WorkspaceGroup({ group, rows, providers, selectedId, nativeSelectedId, externalActive, onCreate, onOpen, onNativeAction, pending, children }) {
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return globalThis.localStorage?.getItem(`dsh.remote-agents.collapsed:${group.key}`) === 'true'; } catch { return false; }
+  });
   const [choice, setChoice] = useState(null);
   const contentId = useId();
   const info = (provider) => providers.find((item) => item.id === provider);
@@ -87,7 +107,10 @@ function WorkspaceGroup({ group, rows, providers, selectedId, nativeSelectedId, 
   const createPending = !!pending[`create:${group.key}`];
   return <section className="agent-workspace-group" aria-label={group.workspace.path || group.workspace.title}>
     <div className="agent-workspace-heading">
-      <button type="button" className="agent-workspace-collapse" aria-expanded={!collapsed} aria-controls={contentId} onClick={() => setCollapsed(!collapsed)} title={group.workspace.path || group.workspace.title}>
+      <button type="button" className="agent-workspace-collapse" aria-expanded={!collapsed} aria-controls={contentId} onClick={() => {
+        setCollapsed(!collapsed);
+        try { globalThis.localStorage?.setItem(`dsh.remote-agents.collapsed:${group.key}`, String(!collapsed)); } catch { /* Storage may be disabled. */ }
+      }} title={group.workspace.path || group.workspace.title}>
         <span aria-hidden="true">{collapsed ? '›' : '⌄'}</span><strong>{group.workspace.title || basename(group.workspace.path)}</strong><span className="agent-workspace-count">{rows.length}</span>
       </button>
     </div>
@@ -100,6 +123,7 @@ function WorkspaceGroup({ group, rows, providers, selectedId, nativeSelectedId, 
         <button type="submit" disabled={createPending} title={`Create ${LABELS[provider]} session in ${group.workspace.path}`}><AgentLogo provider={provider} size={13} />{createPending ? 'Creating…' : '+ New'}</button>
       </form>}
       {group.workspace.path && unavailable.length > 0 && <details className="agent-workspace-availability"><summary>Unavailable backends</summary>{unavailable.map((id) => <p key={id}>{LABELS[id]}: {info(id)?.reason || 'Runtime unavailable'}</p>)}</details>}
+      {children && <div className="agent-workspace-children">{children}</div>}
       <ul className="agent-workspace-sessions">
         {rows.map((row) => {
           const selected = row.provider === 'native' ? row.id === nativeSelectedId : externalActive && !nativeSelectedId && row.id === selectedId;
@@ -135,6 +159,9 @@ export default function WorkspaceSidebar({ useSessions, useSessionStatus, useWor
   const catalog = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
+  const [layout, setLayout] = useState(() => {
+    try { return globalThis.localStorage?.getItem('dsh.remote-agents.workspace-layout') || 'workspace-tree'; } catch { return 'workspace-tree'; }
+  });
   const [path, setPath] = useState('');
   const [error, setError] = useState('');
   const [pending, setPending] = useState({});
@@ -156,9 +183,23 @@ export default function WorkspaceSidebar({ useSessions, useSessionStatus, useWor
   }
   if (!wide) return <aside className="agent-workspaces is-compact" aria-label="Workspaces"><button type="button" title="Expand workspaces" aria-label="Expand workspaces" onClick={expandSidebar}>☰</button></aside>;
   const search = query.trim().toLocaleLowerCase();
+  function renderGroup(group) {
+    const children = group.children.map(renderGroup).filter(Boolean);
+    const rows = group.rows.filter((row) => (filter === 'all' || (filter === 'archived' ? row.archived : !row.archived)) && (!search || [row.name, row.cwd, group.workspace.path, group.workspace.title, LABELS[row.provider], row.provider].some((value) => String(value || '').toLocaleLowerCase().includes(search))));
+    const workspaceMatch = [group.workspace.path, group.workspace.title].some((value) => String(value || '').toLocaleLowerCase().includes(search));
+    if (search && !rows.length && !workspaceMatch && !children.length) return null;
+    return <WorkspaceGroup key={group.key} group={group} rows={rows} providers={catalog.providers} nativeSelectedId={nativeSelectedId} externalActive={externalActive} selectedId={catalog.selectedId} pending={pending}
+      onCreate={(target, provider) => run(`create:${target.key}`, () => onCreate({ provider, workspace: target.workspace }))}
+      onOpen={(row) => run(`open:${rowKey(row)}`, () => onOpen({ provider: row.provider, id: row.id }))}
+      onNativeAction={onNativeAction ? (action, id, value) => run(`native:${id}`, () => onNativeAction(action, id, value)) : null}>{children.length ? children : null}</WorkspaceGroup>;
+  }
   return <aside className="agent-workspaces" aria-label="Workspaces">
     <header className="agent-workspace-toolbar"><h2>Workspaces</h2><label className="agent-workspace-sr-only" htmlFor="agent-workspace-search">Search sessions</label><input id="agent-workspace-search" type="search" placeholder="Search sessions…" value={query} onChange={(event) => setQuery(event.target.value)} />
       <select aria-label="Session history filter" value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">All sessions</option><option value="active">Active sessions</option><option value="archived">Archived / closed</option></select>
+      <select aria-label="Workspace grouping" value={layout} onChange={event => {
+        setLayout(event.target.value);
+        try { globalThis.localStorage?.setItem('dsh.remote-agents.workspace-layout', event.target.value); } catch { /* Storage may be disabled. */ }
+      }}><option value="workspace-tree">Workspace Tree</option><option value="workspace">Workspaces</option></select>
     </header>
     <details className="agent-workspace-add"><summary>Add workspace</summary><form onSubmit={async (event) => {
       event.preventDefault();
@@ -169,15 +210,7 @@ export default function WorkspaceSidebar({ useSessions, useSessionStatus, useWor
     {(error || catalog.error || workspaces.error) && <p className="agent-workspace-error" role="alert">{message(error || catalog.error || workspaces.error)}</p>}
     {(catalog.loading || nativeState.phase === 'pending' || workspaces.phase === 'pending') && <p className="agent-workspace-empty" role="status">Loading sessions…</p>}
     <nav className="agent-workspace-list" aria-label="Workspace sessions">
-      {groups.map((group) => {
-        const rows = group.rows.filter((row) => (filter === 'all' || (filter === 'archived' ? row.archived : !row.archived)) && (!search || [row.name, row.cwd, group.workspace.path, group.workspace.title, LABELS[row.provider], row.provider].some((value) => String(value || '').toLocaleLowerCase().includes(search))));
-        const workspaceMatch = [group.workspace.path, group.workspace.title].some((value) => String(value || '').toLocaleLowerCase().includes(search));
-        if (search && !rows.length && !workspaceMatch) return null;
-        return <WorkspaceGroup key={group.key} group={group} rows={rows} providers={catalog.providers} nativeSelectedId={nativeSelectedId} externalActive={externalActive} selectedId={catalog.selectedId} pending={pending}
-          onCreate={(target, provider) => run(`create:${target.key}`, () => onCreate({ provider, workspace: target.workspace }))}
-          onOpen={(row) => run(`open:${rowKey(row)}`, () => onOpen({ provider: row.provider, id: row.id }))}
-          onNativeAction={onNativeAction ? (action, id, value) => run(`native:${id}`, () => onNativeAction(action, id, value)) : null} />;
-      })}
+      {workspaceForest(groups, layout === 'workspace-tree').map(renderGroup)}
       {!groups.length && !catalog.loading && <p className="agent-workspace-empty">Add a workspace to create a session.</p>}
     </nav>
   </aside>;

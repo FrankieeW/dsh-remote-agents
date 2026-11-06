@@ -2,7 +2,7 @@
 
 An **English-default Workspace interface** with DSH, Claude Code and OMP sessions in one sidebar and content area, plus local/SSH machine and legacy terminal management. User messages are never translated or rewritten.
 
-## What's new in 0.3.1
+## What's new in 0.3.2
 
 - Under each **Workspace**, choose **OMP / DSH / Claude Code → + New**. The session inherits that workspace's directory and opens immediately; no separate Session Workbench or second creation form.
 - Agent logos distinguish sessions in the shared list and conversation header. **DSH** keeps its original conversation renderer and model configuration; **Claude Code / OMP** use structured chat with streaming text, tool calls/results, permission decisions and interruption—not terminal output disguised as chat.
@@ -11,7 +11,7 @@ An **English-default Workspace interface** with DSH, Claude Code and OMP session
 - Claude Agent SDK 0.3.318 and OMP RPC v2 adapters. Unavailable/incompatible CLIs are disabled, with no silent terminal fallback.
 - Creating an external session does not start a process. Its first explicit message does. Backend identity is fixed per session; native drafts are preserved.
 - Persistent transcripts, idempotent sends, explicit continuation after interruption, live-only approvals and bounded output.
-- Pure-plugin integration replaces the Workspace browsing seat, without modifying DSH core. Metadata search, history filters and native session rename/fork/pin/archive actions are included; native tree/flat view options, drag ordering and workspace rename/delete controls are not mirrored by this replacement.
+- Pure-plugin integration replaces the Workspace browsing seat, without modifying DSH core. **Workspace Tree** is the default: workspaces nest under their nearest registered path ancestor, child groups precede parent sessions, and collapsing a parent hides its descendants. Grouping and collapse choices persist across reloads; **Workspaces** switches to sibling groups. Metadata search, history filters and native session rename/fork/pin/archive actions are included. Native single-session-list view, drag ordering and workspace rename/delete controls are not mirrored.
 
 **Current scope:** structured external chat is local-only. Model switching, attachments, rich questions, cross-engine migration and a structured Codex adapter are not implemented. Unsupported dialogs are cancelled/denied rather than guessed. Native DSH conversation capabilities are unchanged; the replacement sidebar's limits are listed above.
 
@@ -52,14 +52,14 @@ npm pack
 Install the resulting package through the plugin manager of the **same profile as your running GUI**. For an explicitly selected `web` profile:
 
 ```sh
-dsh plugin --profile web add /absolute/path/dsh-remote-agents-0.3.1.tgz
+dsh plugin --profile web add /absolute/path/dsh-remote-agents-0.3.2.tgz
 ```
 
 For the desktop application, use its plugin management entry rather than installing into an unrelated `web` profile. Refresh the existing GUI after the update; no automatic HMR is promised without a matching `dev:web` watcher.
 
-Install the versioned **0.3.1** tarball for this Workspace revision. Repacking the older `0.3.0` tarball at its existing installed path can retain pnpm's old file integrity/cache; a new version and filename avoid that ambiguity.
+Install the versioned **0.3.2** tarball for this Workspace revision. Repacking an older tarball at its existing installed path can retain pnpm's old file integrity/cache; a new version and filename avoid that ambiguity.
 
-The historical [v0.2.0 release](https://github.com/FrankieeW/dsh-remote-agents/releases/tag/v0.2.0) does **not** include unified chat. Build this revision for 0.3.1; an existing public release is not silently replaced.
+The historical [v0.2.0 release](https://github.com/FrankieeW/dsh-remote-agents/releases/tag/v0.2.0) does **not** include unified chat. Build this revision for 0.3.2; an existing public release is not silently replaced.
 
 Build artifacts contain a Host ESM entry and a DSH lazy client factory. React is shared with the Host. The pinned Claude SDK remains an ordinary runtime dependency rather than being embedded into the browser bundle.
 

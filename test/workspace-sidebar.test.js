@@ -19,7 +19,7 @@ async function mount(options = {}) {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   const { createRoot } = await import('react-dom/client');
   const module = { exports: {} };
-  vm.runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: createRequire(import.meta.url), console });
+  vm.runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: createRequire(import.meta.url), console, localStorage: dom.window.localStorage });
   const Component = module.exports.default;
   const listeners = new Set();
   const state = { sessions: options.sessions || [external('e1')], providers: options.providers || [{ id: 'omp', available: true }, { id: 'claude', available: false, reason: 'Claude is not installed' }], selectedId: options.selectedId || null, loading: false, error: null };
@@ -27,7 +27,7 @@ async function mount(options = {}) {
   const nativeState = { ids: nativeRows.map((row) => row.id), byId: Object.fromEntries(nativeRows.map((row) => [row.id, row])), phase: 'ready' };
   let nativeStatuses = options.nativeStatuses || new Map();
   const workspace = { workspaceId: 'w1', path: '/project', title: 'Project', sessionIds: nativeRows.filter((row) => row.cwd === '/project').map((row) => row.id) };
-  const workspaces = { items: [workspace], archivedSessionIds: options.archivedSessionIds || [], pinnedSessionIds: [], phase: 'ready', state: 'idle', error: null };
+  const workspaces = { items: options.workspaces || [workspace], archivedSessionIds: options.archivedSessionIds || [], pinnedSessionIds: [], phase: 'ready', state: 'idle', error: null };
   const calls = { create: [], open: [], add: [], action: [] };
   let snapshot = state;
   const store = { getSnapshot: () => snapshot, subscribe: (listener) => { listeners.add(listener); return () => listeners.delete(listener); } };
@@ -187,5 +187,29 @@ test('native pending interactions outrank running and unread, then completion cl
     assert.equal(h.row('Native approval').querySelector('.agent-workspace-pending'), null);
     await h.status(new Map([['approval', { running: false, completionUnread: false }]]));
     assert.doesNotMatch(marker('approval').getAttribute('aria-label'), /unread|approval|running/i, 'acknowledgement removes the completion reminder');
+  } finally { await h.cleanup(); }
+});
+
+test('workspace tree uses nearest path ancestors, preserves child creation and hides descendants on collapse', async () => {
+  const ws = (workspaceId, path) => ({ workspaceId, path, title: workspaceId, sessionIds: [] });
+  const h = await mount({ nativeRows: [], sessions: [external('child', { cwd: '/project/sub/deep' })],
+    workspaces: [ws('deep', '/project/sub/deep'), ws('prefix-sibling', '/project-other'), ws('parent', '/project'), ws('sub', '/project/sub')] });
+  const group = path => document.querySelector(`section[aria-label="${path}"]`);
+  try {
+    const parent = group('/project'), sub = group('/project/sub'), deep = group('/project/sub/deep');
+    assert.equal(deep.parentElement.closest('section'), sub);
+    assert.equal(sub.parentElement.closest('section'), parent);
+    assert.equal(group('/project-other').parentElement.closest('section'), null, 'text prefixes are not ancestors');
+    await h.submit(deep.querySelector('form'));
+    assert.equal(h.calls.create[0].workspace.path, '/project/sub/deep');
+    const collapse = parent.querySelector('.agent-workspace-collapse');
+    await h.click(collapse);
+    assert.ok(deep.closest('[hidden]'), 'parent collapse includes nested workspace sessions');
+    await h.render({ key: 'reload-tree' });
+    assert.ok(group('/project/sub/deep').closest('[hidden]'), 'collapse survives content remount');
+    await h.change('[aria-label="Workspace grouping"]', 'workspace');
+    assert.equal(group('/project/sub').parentElement.closest('section'), null);
+    await h.render({ key: 'reload-flat' });
+    assert.equal(group('/project/sub/deep').parentElement.closest('section'), null, 'grouping preference persists');
   } finally { await h.cleanup(); }
 });

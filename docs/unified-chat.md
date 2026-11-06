@@ -1,4 +1,4 @@
-# Unified conversations (0.3.1)
+# Unified conversations (0.3.2)
 
 The interface defaults to **English** and uses DSH's semantic light/dark theme, typography and controls. User messages and provider output are never translated or rewritten.
 
@@ -10,7 +10,8 @@ The interface defaults to **English** and uses DSH's semantic light/dark theme, 
 - Native rows subscribe to DSH's `useSessionStatus`: approval, question and plan-review requests show a warning with an explicit label, and idle unread completions show a distinct reminder. Live status overrides stale list summaries; pending input outranks running, which outranks completion reminders. Native acknowledgement clears the reminder through the same source.
 - Creating an external session saves a record only. Its CLI starts when you explicitly send the first message. Each session keeps its backend; switching rows is not a cross-engine resume. Drafts and uncertain-send request IDs survive content unmounts during navigation, but unsent drafts are not persisted across page reloads.
 - This is a **pure-plugin UI composition**, not a new DSH core backend API: `sidebar.workspaces` is replaced by a mixed browser, DSH rows use `uiWorkspace` navigation, and external rows render content in the same shell through a main-content registration with no separate launcher. Native DSH keeps its conversation renderer and model configuration; external logs remain plugin-owned, not fabricated native DSH history. Native Send is never intercepted.
-- The replacement provides workspace adoption by absolute path, metadata search, history filters and native rename/fork/pin/archive actions. It does not mirror native tree/flat view options, content search, drag ordering or workspace rename/delete controls. The global DSH New Session shortcut still creates a native draft. Machines and legacy terminals remain a separate management entry, not a conversation workbench.
+- **Workspace Tree** defaults to nested folders, with each workspace under its nearest registered directory ancestor. Path-segment boundaries keep `/project-other` separate from `/project`. Children keep their own sessions and New controls and appear before their parent's sessions; collapsing a parent hides descendants. Grouping and collapse choices are saved locally. **Workspaces** switches to sibling groups. This changes presentation only, not cwd, host membership or session storage. Metadata search retains ancestor context for matching children.
+- The replacement provides workspace adoption by absolute path, metadata search, history filters and native rename/fork/pin/archive actions. It does not mirror native single-session-list view, content search, drag ordering or workspace rename/delete controls. The global DSH New Session shortcut still creates a native draft. Machines and legacy terminals remain a separate management entry, not a conversation workbench.
 
 ## Supported capabilities
 
