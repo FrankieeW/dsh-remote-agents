@@ -62,7 +62,7 @@ function workspaceForest(groups, nested) {
     let parent;
     for (const candidate of nodes) {
       const ancestor = pathOf(candidate);
-      if (candidate !== node && candidate.workspace.path && ancestor !== path && path.startsWith(ancestor === '/' ? '/' : ancestor + '/')
+      if (candidate !== node && !candidate.unregistered && candidate.workspace.path && ancestor !== path && path.startsWith(ancestor === '/' ? '/' : ancestor + '/')
         && (!parent || ancestor.length > pathOf(parent).length)) parent = candidate;
     }
     if (parent) parent.children.push(node); else roots.push(node);
@@ -94,7 +94,7 @@ function NativeActions({ row, busy, onAction }) {
   </details>;
 }
 
-function WorkspaceGroup({ group, rows, providers, selectedId, nativeSelectedId, externalActive, onCreate, onOpen, onNativeAction, pending, children }) {
+function WorkspaceGroup({ group, rows, providers, selectedId, nativeSelectedId, externalActive, onCreate, onOpen, onNativeAction, pending, children, searchActive }) {
   const [collapsed, setCollapsed] = useState(() => {
     try { return globalThis.localStorage?.getItem(`dsh.remote-agents.collapsed:${group.key}`) === 'true'; } catch { return false; }
   });
@@ -105,16 +105,17 @@ function WorkspaceGroup({ group, rows, providers, selectedId, nativeSelectedId, 
   const provider = choice && available(choice) ? choice : available('omp') ? 'omp' : 'native';
   const unavailable = ['omp', 'claude'].filter((id) => !available(id));
   const createPending = !!pending[`create:${group.key}`];
+  const expanded = searchActive || !collapsed;
   return <section className="agent-workspace-group" aria-label={group.workspace.path || group.workspace.title}>
     <div className="agent-workspace-heading">
-      <button type="button" className="agent-workspace-collapse" aria-expanded={!collapsed} aria-controls={contentId} onClick={() => {
+      <button type="button" className="agent-workspace-collapse" aria-expanded={expanded} aria-controls={contentId} onClick={() => {
         setCollapsed(!collapsed);
         try { globalThis.localStorage?.setItem(`dsh.remote-agents.collapsed:${group.key}`, String(!collapsed)); } catch { /* Storage may be disabled. */ }
       }} title={group.workspace.path || group.workspace.title}>
-        <span aria-hidden="true">{collapsed ? '›' : '⌄'}</span><strong>{group.workspace.title || basename(group.workspace.path)}</strong><span className="agent-workspace-count">{rows.length}</span>
+        <span aria-hidden="true">{expanded ? '⌄' : '›'}</span><strong>{group.workspace.title || basename(group.workspace.path)}</strong><span className="agent-workspace-count">{rows.length}</span>
       </button>
     </div>
-    <div id={contentId} hidden={collapsed}>
+    <div id={contentId} hidden={!expanded}>
       <p className="agent-workspace-path" title={group.workspace.path}>{group.workspace.path || 'No project directory'}{group.unregistered && <span> · History</span>}</p>
       {group.workspace.path && <form className="agent-workspace-create" aria-label={`New session in ${group.workspace.path}`} onSubmit={(event) => { event.preventDefault(); if (!createPending && available(provider)) onCreate(group, provider); }}>
         <select aria-label={`Backend for ${group.workspace.path}`} value={provider} disabled={createPending} onChange={(event) => setChoice(event.target.value)}>
@@ -188,7 +189,7 @@ export default function WorkspaceSidebar({ useSessions, useSessionStatus, useWor
     const rows = group.rows.filter((row) => (filter === 'all' || (filter === 'archived' ? row.archived : !row.archived)) && (!search || [row.name, row.cwd, group.workspace.path, group.workspace.title, LABELS[row.provider], row.provider].some((value) => String(value || '').toLocaleLowerCase().includes(search))));
     const workspaceMatch = [group.workspace.path, group.workspace.title].some((value) => String(value || '').toLocaleLowerCase().includes(search));
     if (search && !rows.length && !workspaceMatch && !children.length) return null;
-    return <WorkspaceGroup key={group.key} group={group} rows={rows} providers={catalog.providers} nativeSelectedId={nativeSelectedId} externalActive={externalActive} selectedId={catalog.selectedId} pending={pending}
+    return <WorkspaceGroup key={group.key} group={group} rows={rows} searchActive={!!search} providers={catalog.providers} nativeSelectedId={nativeSelectedId} externalActive={externalActive} selectedId={catalog.selectedId} pending={pending}
       onCreate={(target, provider) => run(`create:${target.key}`, () => onCreate({ provider, workspace: target.workspace }))}
       onOpen={(row) => run(`open:${rowKey(row)}`, () => onOpen({ provider: row.provider, id: row.id }))}
       onNativeAction={onNativeAction ? (action, id, value) => run(`native:${id}`, () => onNativeAction(action, id, value)) : null}>{children.length ? children : null}</WorkspaceGroup>;

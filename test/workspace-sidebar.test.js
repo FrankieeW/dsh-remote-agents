@@ -192,13 +192,14 @@ test('native pending interactions outrank running and unread, then completion cl
 
 test('workspace tree uses nearest path ancestors, preserves child creation and hides descendants on collapse', async () => {
   const ws = (workspaceId, path) => ({ workspaceId, path, title: workspaceId, sessionIds: [] });
-  const h = await mount({ nativeRows: [], sessions: [external('child', { cwd: '/project/sub/deep' })],
+  const h = await mount({ nativeRows: [], sessions: [external('child', { cwd: '/project/sub/deep' }), external('history', { cwd: '/' })],
     workspaces: [ws('deep', '/project/sub/deep'), ws('prefix-sibling', '/project-other'), ws('parent', '/project'), ws('sub', '/project/sub')] });
   const group = path => document.querySelector(`section[aria-label="${path}"]`);
   try {
     const parent = group('/project'), sub = group('/project/sub'), deep = group('/project/sub/deep');
     assert.equal(deep.parentElement.closest('section'), sub);
     assert.equal(sub.parentElement.closest('section'), parent);
+    assert.equal(parent.parentElement.closest('section'), null, 'unregistered history directories cannot adopt registered workspaces');
     assert.equal(group('/project-other').parentElement.closest('section'), null, 'text prefixes are not ancestors');
     await h.submit(deep.querySelector('form'));
     assert.equal(h.calls.create[0].workspace.path, '/project/sub/deep');
@@ -207,6 +208,15 @@ test('workspace tree uses nearest path ancestors, preserves child creation and h
     assert.ok(deep.closest('[hidden]'), 'parent collapse includes nested workspace sessions');
     await h.render({ key: 'reload-tree' });
     assert.ok(group('/project/sub/deep').closest('[hidden]'), 'collapse survives content remount');
+    const input = document.querySelector('#agent-workspace-search');
+    const typeSearch = async (value) => act(async () => {
+      Object.getOwnPropertyDescriptor(h.dom.window.HTMLInputElement.prototype, 'value').set.call(input, value);
+      input.dispatchEvent(new h.dom.window.Event('input', { bubbles: true }));
+    });
+    await typeSearch('External child');
+    assert.equal(group('/project/sub/deep').closest('[hidden]'), null, 'search reveals a child under collapsed ancestors');
+    await typeSearch('');
+    assert.ok(group('/project/sub/deep').closest('[hidden]'), 'clearing search restores the saved collapse');
     await h.change('[aria-label="Workspace grouping"]', 'workspace');
     assert.equal(group('/project/sub').parentElement.closest('section'), null);
     await h.render({ key: 'reload-flat' });
