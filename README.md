@@ -1,6 +1,23 @@
 # DSH Remote Agents
 
+Unified DSH workspaces for **Claude Code, Codex and OMP**, with local and SSH conversations, tool approvals and persistent history. Native DSH sessions share the same sidebar and retain their original conversation interface.
+
+Unofficial community plugin, independently developed and maintained; not affiliated with DeepSeek. User messages and provider output are never translated or rewritten.
+
 > **Stable channel: 0.4.1.** Supports DSH 0.2.2-rc.1 and the CLI compatibility ranges below. Restart the desktop application after upgrading so its host and interface use the same plugin version.
+
+## Screenshots
+
+Captured from the actual **0.4.1** interface in an isolated demonstration profile. Conversations, project paths, and CLI/SSH responses use fixtures; the images contain no production conversations, credentials, personal paths or real server identities. They illustrate the interface, not live-server verification.
+
+**Unified workspace sessions** — browse Claude Code, Codex and OMP conversations together, with nested local workspaces and a separate SSH workspace.
+
+![Unified workspace sidebar with Claude Code, Codex and OMP sessions](docs/screenshots/unified-workspaces.jpg)
+
+| OMP to-dos and tool calls | SSH workspace |
+| --- | --- |
+| ![OMP phased to-do list and an expanded file-edit tool result](docs/screenshots/omp-todos-tools.jpg) | ![SSH conversation showing its example host and remote project directory](docs/screenshots/ssh-workspace.jpg) |
+| Phased tasks and structured tool results stay beside the composer. | The host badge and remote directory identify where the conversation runs. |
 
 ## Install
 
@@ -11,8 +28,6 @@ dsh plugin --profile web add dsh-remote-agents@latest
 ```
 
 For the desktop app, install into its existing profile through its plugin manager; the command above does not update the desktop profile.
-
-An **English-default Workspace interface** with DSH, Claude Code, Codex and OMP sessions in one sidebar and content area, plus local/SSH machine and legacy terminal management. User messages are never translated or rewritten.
 
 ## What's new in 0.4.1
 
