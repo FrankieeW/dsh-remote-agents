@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import HerdrImport, { machineAddress } from "./HerdrImport.jsx";
 
-const STATUS = { running: "运行中", exited: "已退出", unknown: "状态未知" };
+const STATUS = { running: "Running", exited: "Exited", unknown: "Unknown" };
 const messageOf = (error) =>
-  error instanceof Error ? error.message : String(error || "请求失败，请重试");
+  error instanceof Error ? error.message : String(error || "Request failed. Please try again.");
 const localMachine = (machine) =>
   machine.type === "local" || machine.kind === "local";
 const statusOf = (status) =>
@@ -80,14 +80,14 @@ export default function FleetPage({ api }) {
       setLoading(true);
       try {
         if (typeof api !== "function")
-          throw new Error("工作台尚未连接 API，请检查插件集成。");
+          throw new Error("The workbench API is unavailable. Check the plugin integration.");
         const value = await api("snapshot", {});
         if (
           !value ||
           !Array.isArray(value.machines) ||
           !Array.isArray(value.agents)
         )
-          throw new Error("服务返回了无效的工作台数据。");
+          throw new Error("The server returned invalid workbench data.");
         if (!cancelled) {
           setSnapshot(value);
           if (
@@ -130,7 +130,7 @@ export default function FleetPage({ api }) {
       try {
         const value = await api("read", { agentId: selectedId, lines: 300 });
         if (!value || typeof value.output !== "string")
-          throw new Error("服务返回了无效的终端输出。");
+          throw new Error("The server returned invalid terminal output.");
         if (!cancelled) {
           setOutput({ ...value, agentId: selectedId });
           setOutputError("");
@@ -230,7 +230,7 @@ export default function FleetPage({ api }) {
   }
   function addMachine(event) {
     event.preventDefault();
-    run("添加机器", async () => {
+    run("Add machine", async () => {
       await api("addMachine", {
         name: machineForm.name.trim(),
         host: machineForm.host.trim(),
@@ -238,25 +238,25 @@ export default function FleetPage({ api }) {
       if (mounted.current) {
         setMachineForm({ name: "", host: "" });
         setAddOpen(false);
-        setNotice("SSH 机器已添加；请检测连接后启动 Agent。");
+        setNotice("SSH machine added. Test the connection before starting an agent.");
       }
     });
   }
   function startAgent(event) {
     event.preventDefault();
-    run("启动 Agent", async () => {
+    run("Start agent", async () => {
       let args;
       try {
         args = startForm.args.trim() ? JSON.parse(startForm.args) : [];
       } catch {
-        throw new Error('附加参数必须是 JSON 字符串数组，例如 ["--help"]。');
+        throw new Error('Additional arguments must be a JSON array of strings, such as ["--help"].');
       }
       if (!Array.isArray(args) || args.some((arg) => typeof arg !== "string"))
-        throw new Error("附加参数中的每一项都必须是字符串。");
+        throw new Error("Every additional argument must be a string.");
       const machineId = startForm.machineId || machineFilter || machines[0]?.id;
-      if (!machineId) throw new Error("请先添加或选择一台机器。");
+      if (!machineId) throw new Error("Add or select a machine first.");
       if (!startForm.cwd.startsWith("/"))
-        throw new Error("项目目录必须是目标机器上的绝对路径（以 / 开头）。");
+        throw new Error("The project directory must be an absolute path on the target machine (starting with /).");
       const result = await api("start", {
         ...startForm,
         name: startForm.name.trim(),
@@ -265,7 +265,7 @@ export default function FleetPage({ api }) {
       });
       if (mounted.current) {
         setStartOpen(false);
-        setNotice("启动请求已完成，请以进程状态和终端输出为准。");
+        setNotice("Start request completed. Check the process status and terminal output.");
         if (result?.id) pendingSelection.current = result.id;
       }
     });
@@ -276,13 +276,13 @@ export default function FleetPage({ api }) {
       payload: { agentId: agent.id },
       title:
         endpoint === "stop"
-          ? `停止「${agent.name}」？`
-          : `中断「${agent.name}」？`,
+          ? `Stop “${agent.name}”?`
+          : `Interrupt “${agent.name}”?`,
       description:
         endpoint === "stop"
-          ? "这将终止该 Agent 的托管 tmux 会话。未保存的工作可能丢失，此操作不可撤销。"
-          : "这将向进程发送 Ctrl+C，可能取消当前任务，但不会删除会话。",
-      label: endpoint === "stop" ? "确认停止" : "发送 Ctrl+C",
+          ? "This terminates the managed tmux session. Unsaved work may be lost. This cannot be undone."
+          : "This sends Ctrl+C to the process. It may cancel the current task without removing the session.",
+      label: endpoint === "stop" ? "Confirm stop" : "Send Ctrl+C",
     });
   }
   const currentOutput = output?.agentId === selectedId ? output : null;
@@ -297,16 +297,16 @@ export default function FleetPage({ api }) {
           </span>
           <div>
             <span className="fleet-eyebrow">REMOTE AGENT FLEET</span>
-            <h1>Agent 工作台</h1>
+            <h1>Agent Workbench</h1>
           </div>
         </div>
         <div className="fleet-toolbar">
           <span className="fleet-sync">
             {loading
-              ? "正在同步…"
+              ? "Syncing…"
               : updatedAt
-                ? `更新于 ${updatedAt.toLocaleTimeString("zh-CN")}`
-                : "尚未同步"}
+                ? `Updated ${updatedAt.toLocaleTimeString("en-US")}`
+                : "Not synced yet"}
           </span>
           <label className="fleet-toggle">
             <input
@@ -314,23 +314,23 @@ export default function FleetPage({ api }) {
               checked={auto}
               onChange={(event) => setAuto(event.target.checked)}
             />
-            自动轮询
+            Auto-polling
           </label>
           <button
             className="fleet-button"
             onClick={refreshNow}
             disabled={loading || reading}
           >
-            ↻ 刷新
+            ↻ Refresh
           </button>
         </div>
       </header>
       {(snapshotError || actionError) && (
         <div className="fleet-alert fleet-alert--error" role="alert">
-          <strong>操作未完成</strong>
+          <strong>Action not completed</strong>
           <span>{actionError || snapshotError}</span>
           {snapshot && snapshotError && (
-            <small>当前展示的是上次成功同步的数据。</small>
+            <small>Showing data from the last successful sync.</small>
           )}
           <button
             className="fleet-button"
@@ -339,14 +339,14 @@ export default function FleetPage({ api }) {
               refreshNow();
             }}
           >
-            重试同步
+            Retry sync
           </button>
         </div>
       )}
       {notice && (
         <div className="fleet-alert" role="status">
           {notice}
-          <button aria-label="关闭提示" onClick={() => setNotice("")}>
+          <button aria-label="Dismiss notification" onClick={() => setNotice("")}>
             ×
           </button>
         </div>
@@ -354,7 +354,7 @@ export default function FleetPage({ api }) {
       <div className="fleet-workspace">
         <aside className="fleet-sidebar">
           <div className="fleet-section-heading">
-            <h2>机器</h2>
+            <h2>Machines</h2>
             <span className="fleet-count">
               {snapshot ? machines.length : "—"}
             </span>
@@ -365,8 +365,8 @@ export default function FleetPage({ api }) {
           >
             <span className="fleet-machine-icon">▦</span>
             <span>
-              <strong>全部机器</strong>
-              <small>跨机器项目视图</small>
+              <strong>All machines</strong>
+              <small>Projects across machines</small>
             </span>
             <span className="fleet-count">
               {snapshot ? agents.length : "—"}
@@ -389,7 +389,7 @@ export default function FleetPage({ api }) {
                     <strong>{machine.name}</strong>
                     <small>
                       {localMachine(machine)
-                        ? "本机 · LOCAL"
+                        ? "Local machine"
                         : machineAddress(machine)}
                     </small>
                   </span>
@@ -398,7 +398,7 @@ export default function FleetPage({ api }) {
                   <button
                     disabled={!!busy}
                     onClick={() =>
-                      run("检测连接", async () => {
+                      run("Test connection", async () => {
                         const result = await api("probe", {
                           machineId: machine.id,
                         });
@@ -410,7 +410,7 @@ export default function FleetPage({ api }) {
                       })
                     }
                   >
-                    检测连接
+                    Test connection
                   </button>
                   {!localMachine(machine) && (
                     <button
@@ -419,14 +419,14 @@ export default function FleetPage({ api }) {
                         setConfirm({
                           endpoint: "removeMachine",
                           payload: { machineId: machine.id },
-                          title: `移除「${machine.name}」？`,
+                          title: `Remove “${machine.name}”?`,
                           description:
-                            "仅移除机器配置；有托管 Agent 的机器可能无法移除。不会修改 SSH 配置。",
-                          label: "确认移除",
+                            "Only the machine record is removed. Machines with managed agents or imported projects cannot be removed. SSH configuration is unchanged.",
+                          label: "Confirm removal",
                         })
                       }
                     >
-                      移除
+                      Remove
                     </button>
                   )}
                 </div>
@@ -436,8 +436,8 @@ export default function FleetPage({ api }) {
                     role="status"
                   >
                     {probeResults[machine.id].ok
-                      ? "连接检测成功"
-                      : `连接失败：${probeResults[machine.id].error || "请检查 SSH 与 tmux 配置"}`}
+                      ? "Connection test succeeded"
+                      : `Connection failed: ${probeResults[machine.id].error || "Check the SSH and tmux configuration"}`}
                   </p>
                 )}
               </div>
@@ -445,7 +445,7 @@ export default function FleetPage({ api }) {
           </div>
           {!snapshot && (
             <p className="fleet-muted">
-              {loading ? "正在加载机器…" : "尚未获取机器列表"}
+              {loading ? "Loading machines…" : "Machine list is not available"}
             </p>
           )}
           <button
@@ -453,7 +453,7 @@ export default function FleetPage({ api }) {
             onClick={() => setAddOpen(!addOpen)}
             aria-expanded={addOpen}
           >
-            ＋ 添加 SSH 机器
+            ＋ Add SSH machine
           </button>
           {addOpen && (
             <form
@@ -461,7 +461,7 @@ export default function FleetPage({ api }) {
               onSubmit={addMachine}
             >
               <label>
-                显示名称
+                Display name
                 <input
                   required
                   maxLength={80}
@@ -469,31 +469,30 @@ export default function FleetPage({ api }) {
                   onChange={(event) =>
                     setMachineForm({ ...machineForm, name: event.target.value })
                   }
-                  placeholder="例如：开发服务器"
+                  placeholder="e.g. Development server"
                 />
               </label>
               <label>
-                SSH Host / 别名
+                SSH host / alias
                 <input
                   required
                   value={machineForm.host}
                   onChange={(event) =>
                     setMachineForm({ ...machineForm, host: event.target.value })
                   }
-                  placeholder="例如：dev-server"
+                  placeholder="e.g. dev-server"
                   autoCapitalize="none"
                   spellCheck={false}
                 />
               </label>
               <p className="fleet-muted">
-                使用已有 SSH
-                配置与密钥。不会保存密码，未知主机需先在终端完成可信验证。
+                Uses existing SSH configuration and keys. Passwords are never stored. Verify unknown hosts in your terminal first.
               </p>
               <button
                 className="fleet-button fleet-button--primary"
                 disabled={!!busy}
               >
-                添加机器
+                Add machine
               </button>
             </form>
           )}
@@ -503,26 +502,26 @@ export default function FleetPage({ api }) {
             disabled={!!busy}
             aria-expanded={importOpen}
           >
-            ◇ 从 Herdr 导入
+            ◇ Import from Herdr
           </button>
           <div className="fleet-sidebar-note">
             <span aria-hidden="true">◈</span>
-            <strong>你的机器，你的会话</strong>
-            <p>只管理本工作台创建的会话，不接管已有终端。</p>
+            <strong>Your machines, your sessions</strong>
+            <p>Only sessions created by this workbench are managed. Existing terminals are left untouched.</p>
           </div>
         </aside>
 
-        <section className="fleet-projects" aria-label="项目与 Agent">
+        <section className="fleet-projects" aria-label="Projects and agents">
           <div className="fleet-main-heading">
             <div>
               <span className="fleet-eyebrow">WORKSPACE</span>
               <h2>
-                {machineFilter ? machineName(machineFilter) : "所有项目"}
+                {machineFilter ? machineName(machineFilter) : "All projects"}
                 <span className="fleet-count">
                   {snapshot ? groups.length : "—"}
                 </span>
               </h2>
-              <p>按项目聚合，在同一处掌握每个进程。</p>
+              <p>Monitor every process in one place, grouped by project.</p>
             </div>
             <button
               className="fleet-button fleet-button--primary"
@@ -530,7 +529,7 @@ export default function FleetPage({ api }) {
               onClick={() => setStartOpen(!startOpen)}
               aria-expanded={startOpen}
             >
-              ＋ 启动 Agent
+              ＋ Start agent
             </button>
           </div>
           <div className="fleet-summary">
@@ -545,9 +544,9 @@ export default function FleetPage({ api }) {
                       .length
                   : "—"}
               </b>{" "}
-              运行中
+              Running
             </span>
-            <span>卡片为最近记录状态 · 不推断模型活动</span>
+            <span>Cards show the last recorded status · Model activity is not inferred</span>
           </div>
           {importOpen && (
             <HerdrImport
@@ -558,7 +557,7 @@ export default function FleetPage({ api }) {
               onClose={() => setImportOpen(false)}
               onImported={() => {
                 setNotice(
-                  "Herdr 静态配置已导入。未连接、启动或接管任何 Herdr 会话。",
+                  "Herdr static configuration imported. No Herdr sessions were connected, started or taken over.",
                 );
                 refreshNow();
               }}
@@ -567,10 +566,10 @@ export default function FleetPage({ api }) {
           {startOpen && (
             <form className="fleet-form fleet-launch" onSubmit={startAgent}>
               <div className="fleet-section-heading">
-                <h3>新建 Agent</h3>
+                <h3>New agent</h3>
                 <button
                   type="button"
-                  aria-label="关闭启动表单"
+                  aria-label="Close launch form"
                   onClick={() => setStartOpen(false)}
                 >
                   ×
@@ -578,7 +577,7 @@ export default function FleetPage({ api }) {
               </div>
               <div className="fleet-form-grid">
                 <label>
-                  目标机器
+                  Target machine
                   <select
                     value={
                       startForm.machineId ||
@@ -597,14 +596,14 @@ export default function FleetPage({ api }) {
                       <option key={machine.id} value={machine.id}>
                         {machine.name} ·{" "}
                         {localMachine(machine)
-                          ? "本机"
+                          ? "Local"
                           : machineAddress(machine)}
                       </option>
                     ))}
                   </select>
                 </label>
                 <label>
-                  运行程序
+                  Program
                   <select
                     value={startForm.kind}
                     onChange={(event) =>
@@ -618,7 +617,7 @@ export default function FleetPage({ api }) {
                   </select>
                 </label>
                 <label>
-                  Agent 名称
+                  Agent name
                   <input
                     required
                     maxLength={80}
@@ -626,11 +625,11 @@ export default function FleetPage({ api }) {
                     onChange={(event) =>
                       setStartForm({ ...startForm, name: event.target.value })
                     }
-                    placeholder="给这个任务起个名字"
+                    placeholder="Name this task"
                   />
                 </label>
                 <label>
-                  项目绝对路径
+                  Absolute project path
                   <input
                     required
                     value={startForm.cwd}
@@ -643,8 +642,8 @@ export default function FleetPage({ api }) {
                 </label>
               </div>
               <label>
-                附加参数{" "}
-                <span className="fleet-muted">可选 · JSON 字符串数组</span>
+                Additional arguments{" "}
+                <span className="fleet-muted">Optional · JSON array of strings</span>
                 <input
                   value={startForm.args}
                   onChange={(event) =>
@@ -655,26 +654,25 @@ export default function FleetPage({ api }) {
                 />
               </label>
               <p className="fleet-muted">
-                程序与项目目录必须已存在于目标机器；不自动安装或绕过程序权限确认。
+                The program and project directory must already exist on the target machine. Nothing is installed automatically and permission prompts are not bypassed.
               </p>
               <button
                 className="fleet-button fleet-button--primary"
                 disabled={!!busy}
               >
-                {busy === "启动 Agent" ? "正在启动…" : "启动进程"}
+                {busy === "Start agent" ? "Starting…" : "Start process"}
               </button>
             </form>
           )}
           {!snapshot ? (
-            <Empty title={loading ? "正在连接工作台" : "暂时无法加载"}>
+            <Empty title={loading ? "Connecting to the workbench" : "Unable to load"}>
               {loading
-                ? "正在读取机器与托管会话。"
-                : "请查看上方错误并重试同步。"}
+                ? "Loading machines and managed sessions."
+                : "Review the error above and retry syncing."}
             </Empty>
           ) : !groups.length ? (
-            <Empty title="从一个项目开始">
-              选择机器，指定项目目录，启动你的第一个
-              Agent。这里不会展示示例或模拟数据。
+            <Empty title="Start with a project">
+              Choose a machine and project directory, then start your first agent. No sample or simulated data is shown.
             </Empty>
           ) : (
             groups.map((group) => (
@@ -687,12 +685,12 @@ export default function FleetPage({ api }) {
                         {group.name}
                       </strong>
                     )}
-                    <h3 title={group.cwd}>{group.cwd || "未提供项目目录"}</h3>
+                    <h3 title={group.cwd}>{group.cwd || "No project directory provided"}</h3>
                     <p>
                       {machineName(group.machineId)}{" "}
                       <span>
-                        · {group.agents.length} 个 Agent
-                        {group.source === "herdr" ? " · Herdr 导入" : ""}
+                        · {group.agents.length} agents
+                        {group.source === "herdr" ? " · Imported from Herdr" : ""}
                       </span>
                     </p>
                   </div>
@@ -715,12 +713,12 @@ export default function FleetPage({ api }) {
                       setStartOpen(true);
                     }}
                   >
-                    启动 Agent
+                    Start agent
                   </button>
                 </div>
                 {!group.agents.length && (
                   <p className="fleet-project-idle">
-                    项目已就绪，尚无托管 Agent。启动后才会创建新进程。
+                    Project ready. No managed agents yet. A process is created only when you start one.
                   </p>
                 )}
                 <div className="fleet-agent-grid">
@@ -743,7 +741,7 @@ export default function FleetPage({ api }) {
                           {agent.createdAt &&
                           !Number.isNaN(new Date(agent.createdAt).getTime())
                             ? new Date(agent.createdAt).toLocaleString(
-                                "zh-CN",
+                                "en-US",
                                 {
                                   month: "short",
                                   day: "numeric",
@@ -751,9 +749,9 @@ export default function FleetPage({ api }) {
                                   minute: "2-digit",
                                 },
                               )
-                            : "创建时间未知"}
+                            : "Creation time unknown"}
                         </span>
-                        <span>查看输出 ↗</span>
+                        <span>View output ↗</span>
                       </div>
                     </button>
                   ))}
@@ -763,10 +761,10 @@ export default function FleetPage({ api }) {
           )}
         </section>
 
-        <aside className="fleet-inspector" aria-label="Agent 终端输出">
+        <aside className="fleet-inspector" aria-label="Agent terminal output">
           <div className="fleet-inspector-heading">
             <span className="fleet-eyebrow">LIVE CONSOLE</span>
-            <h2>{selected?.name || "终端观察台"}</h2>
+            <h2>{selected?.name || "Terminal inspector"}</h2>
             {selected && (
               <div className="fleet-inspector-meta">
                 <StateBadge status={selectedStatus} />
@@ -775,48 +773,48 @@ export default function FleetPage({ api }) {
             )}
           </div>
           {!selected ? (
-            <Empty title="选择一个 Agent">
-              点击项目中的卡片，查看真实终端输出并发送输入。
+            <Empty title="Select an agent">
+              Select a project card to view live terminal output and send input.
             </Empty>
           ) : (
             <>
               <div className="fleet-terminal-toolbar">
                 <span>
                   <i className="fleet-dot" />
-                  只读输出 · 最近 300 行
+                  Read-only output · Last 300 lines
                 </span>
                 <span>
-                  {reading ? "读取中…" : auto ? "每 3 秒轮询" : "轮询已暂停"}
+                  {reading ? "Reading…" : auto ? "Polling every 3 seconds" : "Polling paused"}
                 </span>
               </div>
               {outputError && (
                 <div className="fleet-output-error" role="alert">
                   {outputError}
-                  {currentOutput && <small>以下为上次成功读取的输出。</small>}
+                  {currentOutput && <small>Showing output from the last successful read.</small>}
                 </div>
               )}
               {currentOutput?.diagnostic && (
                 <div className="fleet-output-error" role="alert">
-                  <strong>终端诊断</strong>
+                  <strong>Terminal diagnostics</strong>
                   <p>{String(currentOutput.diagnostic)}</p>
                 </div>
               )}
               <pre
                 className="fleet-terminal"
                 tabIndex={0}
-                aria-label="终端输出"
+                aria-label="Terminal output"
               >
                 {currentOutput
                   ? currentOutput.output ||
                     (currentOutput.diagnostic || selectedStatus === "unknown"
-                      ? "（暂时无法确认终端输出，请查看诊断或重试）"
-                      : "（进程尚无输出）")
+                      ? "(Terminal output is unavailable. Check diagnostics or retry.)"
+                      : "(No process output yet)")
                   : reading
-                    ? "正在读取终端输出…"
-                    : "暂无可用输出"}
+                    ? "Reading terminal output…"
+                    : "No output available"}
               </pre>
               {currentOutput?.truncated && (
-                <p className="fleet-truncated">输出已截断，仅显示最近内容。</p>
+                <p className="fleet-truncated">Output was truncated. Only recent content is shown.</p>
               )}
               <form
                 className="fleet-input-form"
@@ -824,18 +822,18 @@ export default function FleetPage({ api }) {
                   event.preventDefault();
                   const sentText = text;
                   const agentId = selected.id;
-                  run("发送输入", async () => {
+                  run("Send input", async () => {
                     await api("send", { agentId, text: sentText, enter });
                     if (mounted.current) {
                       setText((current) =>
                         current === sentText ? "" : current,
                       );
-                      setNotice("输入已发送。");
+                      setNotice("Input sent.");
                     }
                   });
                 }}
               >
-                <label htmlFor="fleet-agent-input">发送到终端</label>
+                <label htmlFor="fleet-agent-input">Send to terminal</label>
                 <input
                   id="fleet-agent-input"
                   type="text"
@@ -843,7 +841,7 @@ export default function FleetPage({ api }) {
                   autoComplete="off"
                   value={text}
                   onChange={(event) => setText(event.target.value)}
-                  placeholder="输入单行消息或命令…"
+                  placeholder="Enter a single-line message or command…"
                   disabled={!!busy || selectedStatus === "exited"}
                 />
                 <div className="fleet-input-actions">
@@ -853,17 +851,17 @@ export default function FleetPage({ api }) {
                       checked={enter}
                       onChange={(event) => setEnter(event.target.checked)}
                     />
-                    附加回车
+                    Append Enter
                   </label>
                   <button
                     className="fleet-button fleet-button--primary"
                     disabled={!!busy || !text || selectedStatus === "exited"}
                   >
-                    发送 ↗
+                    Send ↗
                   </button>
                 </div>
                 <p className="fleet-muted">
-                  输入直接交给目标进程；Shell 中的文本可能作为命令执行。
+                  Input is sent directly to the target process. Text in a shell may execute as a command.
                 </p>
               </form>
               <div className="fleet-danger-actions">
@@ -872,14 +870,14 @@ export default function FleetPage({ api }) {
                   disabled={!!busy || selectedStatus === "exited"}
                   onClick={() => requestAction("interrupt", selected)}
                 >
-                  中断 Ctrl+C
+                  Interrupt Ctrl+C
                 </button>
                 <button
                   className="fleet-button fleet-button--danger"
                   disabled={!!busy || !!selected.stoppedAt}
                   onClick={() => requestAction("stop", selected)}
                 >
-                  {selected.stoppedAt ? "会话已停止" : "停止会话"}
+                  {selected.stoppedAt ? "Session stopped" : "Stop session"}
                 </button>
               </div>
             </>
@@ -887,13 +885,13 @@ export default function FleetPage({ api }) {
         </aside>
       </div>
       <footer className="fleet-footer">
-        <span>FLEET / 自有机器上的 Agent 控制面板</span>
+        <span>FLEET / Agent control panel for your machines</span>
         <span role="status">
           {busy
             ? `${busy}…`
             : auto
-              ? "自动轮询已开启 · 列表 5s / 输出 3s"
-              : "自动轮询已暂停"}
+              ? "Auto-polling on · List 5s / Output 3s"
+              : "Auto-polling paused"}
         </span>
       </footer>
       {confirm && (
@@ -936,7 +934,7 @@ export default function FleetPage({ api }) {
                 disabled={!!busy}
                 onClick={() => setConfirm(null)}
               >
-                取消
+                Cancel
               </button>
               <button
                 className="fleet-button fleet-button--danger"
@@ -946,7 +944,7 @@ export default function FleetPage({ api }) {
                   setConfirm(null);
                   run(action.label, async () => {
                     await api(action.endpoint, action.payload);
-                    if (mounted.current) setNotice("操作已完成。");
+                    if (mounted.current) setNotice("Action completed.");
                   });
                 }}
               >

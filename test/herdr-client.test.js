@@ -90,6 +90,10 @@ test("Herdr import UI requires preview and confirmation, invalidates edits and r
         }),
       ),
     );
+    assert.ok(document.querySelector('[aria-label="Herdr static configuration import"]'));
+    assert.ok(document.querySelector('[aria-label="Close Herdr import"]'));
+    assert.match(document.body.textContent, /Import machines and projects from Herdr/);
+    assert.match(document.body.textContent, /本机/, "machine names remain unchanged");
     const text = JSON.stringify({
       version: 1,
       ssh: [],
@@ -101,27 +105,27 @@ test("Herdr import UI requires preview and confirmation, invalidates edits and r
       false,
     );
     await act(async () => {
-      button("生成导入预览").click();
+      button("Preview import").click();
       await pending;
     });
     assert.match(document.body.textContent, /Do not resume Herdr sessions/);
-    assert.equal(button("确认导入配置").disabled, true);
+    assert.equal(button("Confirm import").disabled, true);
     await act(async () =>
       document.querySelector("input[type=checkbox]").click(),
     );
-    assert.equal(button("确认导入配置").disabled, false);
+    assert.equal(button("Confirm import").disabled, false);
     // Replacing even semantically identical content invalidates the old preview.
     await upload(0, text + " ");
-    assert.equal(button("确认导入配置"), undefined);
+    assert.equal(button("Confirm import"), undefined);
     await act(async () => {
-      button("生成导入预览").click();
+      button("Preview import").click();
       await pending;
     });
     await act(async () =>
       document.querySelector("input[type=checkbox]").click(),
     );
     await act(async () => {
-      button("确认导入配置").click();
+      button("Confirm import").click();
       await pending;
     });
     const commits = calls.filter(([method]) => method === "importHerdr");
@@ -131,10 +135,10 @@ test("Herdr import UI requires preview and confirmation, invalidates edits and r
       confirmation: "a".repeat(64),
     });
     assert.equal(imported, 1);
-    assert.equal(button("确认导入配置"), undefined);
+    assert.equal(button("Confirm import"), undefined);
     await upload(1, JSON.stringify({ version: 3, workspaces: [] }));
     assert.equal(
-      button("生成导入预览").disabled,
+      button("Preview import").disabled,
       true,
       "session import cannot default to Local",
     );
@@ -143,7 +147,11 @@ test("Herdr import UI requires preview and confirmation, invalidates edits and r
       select.value = "local";
       select.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
     });
-    assert.equal(button("生成导入预览").disabled, false);
+    assert.equal(button("Preview import").disabled, false);
+    await upload(1, "not JSON: DO_NOT_RENDER_RAW");
+    assert.match(document.body.textContent, /The file is not valid JSON/);
+    assert.equal(document.body.textContent.includes("DO_NOT_RENDER_RAW"), false);
+    assert.equal(button("Preview import").disabled, true);
   } finally {
     await act(async () => root.unmount());
     dom.window.close();

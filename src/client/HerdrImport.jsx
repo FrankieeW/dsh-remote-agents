@@ -12,7 +12,7 @@ function fileBuffer(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error("无法读取所选文件，请重新选择。"));
+    reader.onerror = () => reject(new Error("Unable to read the selected file. Please select it again."));
     reader.readAsArrayBuffer(file);
   });
 }
@@ -70,20 +70,20 @@ export default function HerdrImport({
     if (!file) return;
     try {
       if (file.size > MAX_FILE_BYTES)
-        throw new Error("单个文件不能超过 1 MiB，请选择较小的静态配置文件。");
+        throw new Error("Each file must be 1 MiB or smaller. Choose a smaller static configuration file.");
       const buffer = await fileBuffer(file);
       if (buffer.byteLength > MAX_FILE_BYTES)
-        throw new Error("单个文件不能超过 1 MiB。");
+        throw new Error("Each file must be 1 MiB or smaller.");
       let text;
       try {
         text = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
       } catch {
-        throw new Error("文件必须使用 UTF-8 编码。");
+        throw new Error("Files must use UTF-8 encoding.");
       }
       try {
         JSON.parse(text);
       } catch {
-        throw new Error("文件不是有效的 JSON。不会显示或导入原始内容。");
+        throw new Error("The file is not valid JSON. Its raw contents will not be displayed or imported.");
       }
       if (alive.current && fileGeneration.current[kind] === generation) {
         setFiles((previous) => ({
@@ -95,7 +95,7 @@ export default function HerdrImport({
       if (alive.current && fileGeneration.current[kind] === generation) {
         setFileErrors((previous) => ({
           ...previous,
-          [kind]: error.message || "文件读取失败。",
+          [kind]: error.message || "Unable to read the file.",
         }));
       }
     } finally {
@@ -128,7 +128,7 @@ export default function HerdrImport({
         ? { sessionText: files.session.text, projectMachineId: machineId }
         : {}),
     };
-    run("预览 Herdr 配置", async () => {
+    run("Preview Herdr configuration", async () => {
       const value = await api("previewHerdr", input);
       if (!alive.current || revision.current !== requestRevision) return;
       if (
@@ -140,7 +140,7 @@ export default function HerdrImport({
         !Array.isArray(value.warnings) ||
         !value.summary
       ) {
-        throw new Error("导入预览响应无效，请重试；尚未导入任何配置。");
+        throw new Error("The import preview response is invalid. Try again; no configuration has been imported.");
       }
       setPreview({ value, input, revision: requestRevision });
     });
@@ -157,7 +157,7 @@ export default function HerdrImport({
       return;
     if (preview.input.sessionText && !validTarget) return;
     const approved = preview;
-    run("导入 Herdr 配置", async () => {
+    run("Import Herdr configuration", async () => {
       // Reuse the exact previewed input, never reconstruct it from mutable form values.
       await api("importHerdr", {
         ...approved.input,
@@ -175,15 +175,15 @@ export default function HerdrImport({
 
   const value = preview?.value;
   return (
-    <section className="fleet-import" aria-label="Herdr 静态配置导入">
+    <section className="fleet-import" aria-label="Herdr static configuration import">
       <div className="fleet-section-heading">
         <div>
           <span className="fleet-eyebrow">BRING YOUR WORKSPACE</span>
-          <h3>从 Herdr 导入机器与项目</h3>
+          <h3>Import machines and projects from Herdr</h3>
         </div>
         <button
           type="button"
-          aria-label="关闭 Herdr 导入"
+          aria-label="Close Herdr import"
           disabled={!!busy}
           onClick={onClose}
         >
@@ -191,13 +191,12 @@ export default function HerdrImport({
         </button>
       </div>
       <p className="fleet-import-safety">
-        只导入机器连接配置与项目目录，不接管 Agent，不读取终端输出，不执行 Herdr
-        CLI，也不修改 Herdr 文件。
+        Import only machine connection settings and project paths. This does not take over agents, read terminal output, run the Herdr CLI or modify Herdr files.
       </p>
       <form className="fleet-form" onSubmit={requestPreview}>
         <div className="fleet-form-grid">
           <label>
-            机器配置 · endpoints.json（可选）
+            Machine catalog · endpoints.json (optional)
             <input
               key={`machines-${fileKey}`}
               type="file"
@@ -208,16 +207,15 @@ export default function HerdrImport({
               }
             />
             <span className="fleet-muted">
-              Unix 默认 ~/.local/state/herdr/client/endpoints.json；设置
-              XDG_STATE_HOME 时使用其对应目录。
+              Unix default: ~/.local/state/herdr/client/endpoints.json. If XDG_STATE_HOME is set, its corresponding directory is used.
             </span>
             {files.machines && (
               <span className="fleet-import-file">
-                已读取 {files.machines.name} ·{" "}
+                Loaded {files.machines.name} ·{" "}
                 {files.machines.size.toLocaleString()} B
               </span>
             )}
-            {reading.machines && <span role="status">正在读取机器配置…</span>}
+            {reading.machines && <span role="status">Reading machine catalog…</span>}
             {fileErrors.machines && (
               <span className="fleet-import-error" role="alert">
                 {fileErrors.machines}
@@ -225,7 +223,7 @@ export default function HerdrImport({
             )}
           </label>
           <label>
-            项目快照 · session.json（可选）
+            Project snapshot · session.json (optional)
             <input
               key={`session-${fileKey}`}
               type="file"
@@ -236,16 +234,15 @@ export default function HerdrImport({
               }
             />
             <span className="fleet-muted">
-              默认 ~/.config/herdr/session.json 或
-              ~/.config/herdr/sessions/&lt;name&gt;/session.json。可选择远端文件副本。
+              Default: ~/.config/herdr/session.json or ~/.config/herdr/sessions/&lt;name&gt;/session.json. You may select a copy from a remote machine.
             </span>
             {files.session && (
               <span className="fleet-import-file">
-                已读取 {files.session.name} ·{" "}
+                Loaded {files.session.name} ·{" "}
                 {files.session.size.toLocaleString()} B
               </span>
             )}
-            {reading.session && <span role="status">正在读取项目快照…</span>}
+            {reading.session && <span role="status">Reading project snapshot…</span>}
             {fileErrors.session && (
               <span className="fleet-import-error" role="alert">
                 {fileErrors.session}
@@ -254,7 +251,7 @@ export default function HerdrImport({
           </label>
         </div>
         <label>
-          项目所属机器 · 导入 session.json 时必须明确选择
+          Project machine · Explicit selection required for session.json
           <select
             value={machineId}
             disabled={!!busy}
@@ -263,12 +260,12 @@ export default function HerdrImport({
               setMachineId(event.target.value);
             }}
           >
-            <option value="">请选择项目路径实际所在的机器</option>
+            <option value="">Select the machine where these project paths exist</option>
             {machines.map((machine) => (
               <option key={machine.id} value={machine.id}>
                 {machine.name} ·{" "}
                 {machine.type === "local" || machine.kind === "local"
-                  ? "本机"
+                  ? "Local"
                   : machineAddress(machine)}
               </option>
             ))}
@@ -276,12 +273,11 @@ export default function HerdrImport({
         </label>
         {files.session && !validTarget && (
           <p className="fleet-import-error" role="status">
-            必须选择项目实际所属机器，不能根据文件来源自动推断为本机。
+            Select the machine where the projects exist. Local cannot be inferred from the file source.
           </p>
         )}
         <p className="fleet-muted">
-          每个文件限 1 MiB，总计限 2 MiB，UTF-8
-          JSON。至少选择一个文件；文件文本仅暂存当前界面内存。可先仅导入机器，再选择新机器导入远端项目。
+          Select at least one UTF-8 JSON file. Limit: 1 MiB per file, 2 MiB total. File text stays temporarily in this view’s memory. Import machines first, then select a new machine to import its remote projects.
         </p>
         <div className="fleet-import-actions">
           <button
@@ -298,29 +294,29 @@ export default function HerdrImport({
               setFileKey((number) => number + 1);
             }}
           >
-            清除文件
+            Clear files
           </button>
           <button
             className="fleet-button fleet-button--primary"
             disabled={!canPreview}
           >
-            {busy === "预览 Herdr 配置" ? "正在预览…" : "生成导入预览"}
+            {busy === "Preview Herdr configuration" ? "Preparing preview…" : "Preview import"}
           </button>
         </div>
       </form>
       {value && (
         <div className="fleet-import-preview">
           <div className="fleet-section-heading">
-            <h3>核对导入预览</h3>
-            <span className="fleet-count">尚未写入</span>
+            <h3>Review import preview</h3>
+            <span className="fleet-count">Not saved yet</span>
           </div>
           <p className="fleet-import-summary">
-            新增 {value.summary.machines} 台机器 · 新增 {value.summary.projects}{" "}
-            个项目 · 跳过 {value.summary.duplicates} 个重复项
+            Add {value.summary.machines} machines · Add {value.summary.projects}{" "}
+            projects · Skip {value.summary.duplicates} duplicates
           </p>
           {value.warnings.length > 0 && (
             <div className="fleet-import-warnings" role="status">
-              <strong>请留意</strong>
+              <strong>Please review</strong>
               <ul>
                 {value.warnings.map((warning, index) => (
                   <li key={index}>{String(warning)}</li>
@@ -328,7 +324,7 @@ export default function HerdrImport({
               </ul>
             </div>
           )}
-          <h4>机器</h4>
+          <h4>Machines</h4>
           {value.machines.length ? (
             <ul className="fleet-import-items">
               {value.machines.map((machine, index) => (
@@ -339,18 +335,18 @@ export default function HerdrImport({
                   </div>
                   <span className="fleet-count">
                     {machine.action === "add"
-                      ? "新增"
+                      ? "Add"
                       : machine.action === "duplicate"
-                        ? "重复 · 跳过"
-                        : "未识别"}
+                        ? "Duplicate · Skip"
+                        : "Unknown"}
                   </span>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="fleet-muted">没有可导入的机器。</p>
+            <p className="fleet-muted">No machines to import.</p>
           )}
-          <h4>项目</h4>
+          <h4>Projects</h4>
           {value.projects.length ? (
             <ul className="fleet-import-items">
               {value.projects.map((project, index) => (
@@ -364,23 +360,23 @@ export default function HerdrImport({
                           (machine) => machine.id === project.machineId,
                         );
                         return target
-                          ? `${target.name} · ${target.type === "local" || target.kind === "local" ? "本机" : machineAddress(target)}`
+                          ? `${target.name} · ${target.type === "local" || target.kind === "local" ? "Local" : machineAddress(target)}`
                           : project.machineId;
                       })()}
                     </small>
                   </div>
                   <span className="fleet-count">
                     {project.action === "add"
-                      ? "新增"
+                      ? "Add"
                       : project.action === "duplicate"
-                        ? "重复 · 跳过"
-                        : "未识别"}
+                        ? "Duplicate · Skip"
+                        : "Unknown"}
                   </span>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="fleet-muted">没有可导入的项目。</p>
+            <p className="fleet-muted">No projects to import.</p>
           )}
           <label className="fleet-import-confirm">
             <input
@@ -390,7 +386,7 @@ export default function HerdrImport({
               onChange={(event) => setConfirmed(event.target.checked)}
             />
             <span>
-              我已核对目标机器、项目路径与警告，仅导入以上静态配置，不启动或接管进程。
+              I have reviewed the target machines, project paths and warnings. Import only this static configuration without starting or taking over processes.
             </span>
           </label>
           <button
@@ -400,7 +396,7 @@ export default function HerdrImport({
             }
             onClick={importConfirmed}
           >
-            {busy === "导入 Herdr 配置" ? "正在导入…" : "确认导入配置"}
+            {busy === "Import Herdr configuration" ? "Importing…" : "Confirm import"}
           </button>
         </div>
       )}

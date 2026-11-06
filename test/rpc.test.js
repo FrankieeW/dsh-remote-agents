@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHandler } from "../src/rpc.js";
+import { createHandler, ENDPOINTS } from "../src/rpc.js";
 const owner = { principal: { kind: "owner" } };
 const call = (handler, method, payload = {}, peer = owner) =>
   handler(method, payload, new AbortController().signal, peer);
@@ -13,7 +13,7 @@ test("all RPC operations require an authenticated owner", async () => {
     },
   });
   for (const peer of [undefined, {}, { principal: { kind: "guest" } }]) {
-    for (const method of ["snapshot", "previewHerdr", "importHerdr"]) {
+    for (const method of ENDPOINTS) {
       assert.equal(
         (await call(handler, method, {}, peer ?? null)).error.code,
         "forbidden",
@@ -72,6 +72,20 @@ test("dispatch adapts API parameters and wraps values", async () => {
   await call(handler, "interrupt", { agentId: "a" });
   assert.deepEqual(calls.pop(), ["interrupt", "a"]);
 });
+test("chat RPC is distinct from terminal RPC and checks provider availability", async () => {
+  const calls = [];
+  const chat = Object.fromEntries(["list", "create", "get", "send", "interrupt", "approve", "close"].map(name => [name, (...args) => { calls.push([name, ...args]); return name === "list" ? [] : { id: "test" }; }]));
+  const handler = createHandler({}, chat, async () => [{ id: "claude", available: true }, { id: "omp", available: false, reason: "not installed" }]);
+  assert.equal((await call(handler, "chatList")).value.providers.length, 2);
+  assert.equal((await call(handler, "chatCreate", { provider: "omp", cwd: "/tmp" })).ok, false);
+  assert.equal(calls.filter(([name]) => name === "create").length, 0);
+  await call(handler, "chatCreate", { provider: "claude", cwd: "/tmp" });
+  await call(handler, "chatSend", { id: "test", text: "hello", requestId: "request" });
+  await call(handler, "chatApprove", { id: "test", approvalId: "permission", allow: false });
+  assert.deepEqual(calls.at(-1), ["approve", { id: "test", approvalId: "permission", allow: false }]);
+  assert.equal((await call(handler, "chatGet", { id: "test" }, { principal: { kind: "guest" } })).error.code, "forbidden");
+});
+
 test("subprocess failures are bounded structured errors", async () => {
   const handler = createHandler({
     probe() {

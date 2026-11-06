@@ -9,6 +9,7 @@ await build({
   format: "esm",
   target: "node22",
   sourcemap: true,
+  external: ["@anthropic-ai/claude-agent-sdk"],
 });
 await build({
   entryPoints: ["src/bin-import.js"],

@@ -39,6 +39,7 @@ test("client registers DSH slots and handles terminal diagnostics and stopped st
     setTimeout,
     clearTimeout,
     console,
+    crypto: globalThis.crypto,
   });
   const registrations = [];
   const cleanup = [];
@@ -53,17 +54,23 @@ test("client registers DSH slots and handles terminal diagnostics and stopped st
   };
   const ctx = {
     slots: {
-      inject: (_slot, fn) => fn(),
+      inject: (_slot, fn) => { const result = fn(); if (result?.[Symbol.iterator]) for (const effect of result) void effect; },
       register: (meta, Component) => {
         registrations.push({ meta, Component });
       },
     },
     effect: (fn) => cleanup.push(fn()),
+    layout: { beginNavigation: () => new AbortController().signal, selectPanel: (id) => calls.push(["selectPanel", id]) },
+    uiWorkspace: { startSession: (...args) => calls.push(["nativeStart", args]) },
+    workspaces: { create: async ({ path }) => ({ workspaceId: "workspace-test", path }) },
     connection: {
       rpc: {
         call: async (channel, endpoint, payload) => {
-          assert.equal(channel, "/remote-agents");
+          assert.equal(channel, "/api");
+          assert.ok(endpoint.startsWith("remote-agents/"));
+          endpoint = endpoint.slice("remote-agents/".length);
           calls.push([endpoint, payload]);
+          if (endpoint === "chatList") return { ok: true, value: { sessions: [], providers: [] } };
           if (endpoint === "snapshot")
             return {
               ok: true,
@@ -94,13 +101,7 @@ test("client registers DSH slots and handles terminal diagnostics and stopped st
   const root = createRoot(document.getElementById("root"));
   try {
     mod.exports.apply(ctx);
-    const main = registrations.find((r) => r.meta.name === "main");
-    assert.equal(main.meta.key, "remote-agents");
-    assert.equal(
-      registrations.find((r) => r.meta.name === "sidebar.panellist").meta.id,
-      main.meta.key,
-    );
-    assert.match(document.head.textContent, /fleet-page/);
+    const main = registrations.find((r) => r.meta.name === "main" && r.meta.key === "remote-agents");
     await act(async () =>
       root.render(React.createElement(main.Component, main.meta.inject())),
     );
@@ -108,22 +109,25 @@ test("client registers DSH slots and handles terminal diagnostics and stopped st
       [...document.querySelectorAll("button")].find((b) =>
         b.textContent.includes(text),
       );
-    assert.match(document.body.textContent, /测试 Agent/);
-    await act(async () => button("查看输出").click());
+    assert.match(document.body.textContent, /测试 Agent/, "user-provided agent names remain unchanged");
+    assert.match(document.body.textContent, /Agent Workbench/);
+    assert.ok(document.querySelector('[aria-label="Projects and agents"]'));
+    assert.ok(document.querySelector('[aria-label="Agent terminal output"]'));
+    await act(async () => button("View output").click());
     assert.match(document.body.textContent, /SSH connection unavailable/);
     assert.equal(
-      button("停止会话").disabled,
+      button("Stop session").disabled,
       false,
       "dead pane must still be stoppable",
     );
-    await act(async () => button("停止会话").click());
+    await act(async () => button("Stop session").click());
     assert.ok(document.querySelector('[role="alertdialog"]'));
     assert.equal(
       calls.filter(([method]) => method === "stop").length,
       0,
       "confirmation required",
     );
-    await act(async () => button("确认停止").click());
+    await act(async () => button("Confirm stop").click());
     assert.equal(calls.filter(([method]) => method === "stop").length, 1);
     assert.ok(
       [...document.querySelectorAll(".fleet-danger-actions button")].at(-1)

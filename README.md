@@ -1,28 +1,46 @@
 # DSH Remote Agents
 
-在 DeepSeek Harness 内管理 **本机 + SSH 远程 CLI Agent** 的工作台。借鉴 Herdr 的机器/终端组织方式与 T3 Code 的项目工作区体验，不依赖 Herdr，不接管已有 Agent。
+An **English-default Workspace interface** with DSH, Claude Code and OMP sessions in one sidebar and content area, plus local/SSH machine and legacy terminal management. User messages are never translated or rewritten.
 
-## 当前能力（0.2.0）
+## What's new in 0.3.0
 
-新增 **Herdr 机器与项目配置导入**：工作台内选择文件 → 预览 → 明确确认；配套离线 CLI 和自动注册的 `herdr-import` Skill。详见[导入指南](<docs/herdr-import.md>)与 [Skill](<skills/herdr-import/SKILL.md>)。不接管 Herdr 活动会话，也不修改源配置。
+- Under each **Workspace**, choose **OMP / DSH / Claude Code → + New**. The session inherits that workspace's directory and opens immediately; no separate Session Workbench or second creation form.
+- Agent logos distinguish sessions in the shared list and conversation header. **DSH** keeps its original conversation renderer and model configuration; **Claude Code / OMP** use structured chat with streaming text, tool calls/results, permission decisions and interruption—not terminal output disguised as chat.
+- Native DSH semantic theme tokens, including light/dark mode, typography, compact controls and layout clearances.
+- Native DSH rows keep live approval/question/plan-review warnings and unread-completion markers. Pending interaction takes precedence over running, and running takes precedence over completion reminders.
+- Claude Agent SDK 0.3.318 and OMP RPC v2 adapters. Unavailable/incompatible CLIs are disabled, with no silent terminal fallback.
+- Creating an external session does not start a process. Its first explicit message does. Backend identity is fixed per session; native drafts are preserved.
+- Persistent transcripts, idempotent sends, explicit continuation after interruption, live-only approvals and bounded output.
+- Pure-plugin integration replaces the Workspace browsing seat, without modifying DSH core. Metadata search, history filters and native session rename/fork/pin/archive actions are included; native tree/flat view options, drag ordering and workspace rename/delete controls are not mirrored by this replacement.
 
-- DSH 侧栏「Agent 工作台」，按机器筛选、按项目目录组织 Agent。
-- 本机、SSH alias 配置与连接检查；Codex、Claude Code、DSH TUI、Shell 启动。
-- 有界终端输出快照、刷新、输入发送、Ctrl+C 中断、确认后停止。
-- tmux 会话跨 SSH 断连和 DSH 重启保留；重新打开工作台可以继续查看。
-- 复用 DSH Connection 的登录/来源检查，并额外限制为 owner。
+**Current scope:** structured external chat is local-only. Model switching, attachments, rich questions, cross-engine migration and a structured Codex adapter are not implemented. Unsupported dialogs are cancelled/denied rather than guessed. Native DSH conversation capabilities are unchanged; the replacement sidebar's limits are listed above.
 
-**这是 MVP，不是完整 Herdr/T3 Code 克隆。** 暂不提供终端仿真器/鼠标透传、Git diff/worktree 操作、多机任务编排、已有终端发现、Agent 语义状态识别。`running` 仅说明终端进程存活，`unknown` 表示连接或所有权无法确认；机器在线与任务完成不是同一件事。快照里的状态是上次观察值，查看输出会更新它。
+See the [architecture, protocol references and capability boundaries](<docs/unified-chat.md>).
 
-## 要求
+## Existing fleet features
 
-- 已核对插件 API 的 DSH **0.2.2-rc.1**，以 Web GUI 运行；其他版本需重新验证，未设置版本豁免。
-- 插件运行主机：Node.js 22+、tmux、OpenSSH 客户端；目标主机：macOS/Linux、tmux、对应 Agent CLI。
-- CLI 已完成登录，位于目标交互 shell 的 PATH 中；远端 `tmux` 需在 SSH 非交互 PATH 中。
-- 本机与远端 cwd 均使用各自主机的**绝对路径**。
-- 当前插件使用 Web Connection 自定义 RPC 通道；不声称支持没有 WebServer 的纯 Electron IPC 模式。
+Open **Machines & projects** for:
 
-## 构建与安装
+- Local machines and SSH aliases, explicit connection probes, project grouping.
+- Codex, Claude Code, DSH TUI and shell processes in isolated tmux sessions.
+- Bounded terminal snapshots, literal input, interrupt and confirmed stop.
+- Persistent tmux sessions across SSH disconnects and plugin/Host restarts.
+- Static Herdr machine/project import with preview and explicit confirmation, offline import CLI and the bundled `herdr-import` Skill. See the [import guide](<docs/herdr-import.md>) and [Skill](<skills/herdr-import/SKILL.md>).
+
+This is not a full Herdr/T3 clone. There is no terminal emulation, live Herdr takeover, existing terminal discovery, Git worktree orchestration or inferred agent task status. In the legacy terminal view, `running` means the process is alive—not that an LLM task is finished.
+
+## Requirements
+
+- DSH **0.2.2-rc.1**; no runtime-version exemptions. Other DSH versions require revalidation.
+- Node.js 22+ on the plugin Host.
+- Structured Claude: installed and authenticated Claude Code ≥2.1.318 and <3.
+- Structured OMP: installed and authenticated OMP ≥18.17 and <19; source-verified protocol version is 18.17.0 with RPC v2 negotiation.
+- Legacy terminals additionally require tmux and, for remote machines, OpenSSH. Target machines must be macOS/Linux with tmux and the selected CLI.
+- Absolute project paths on the respective host; remote tmux must be on its noninteractive SSH PATH.
+
+The plugin uses owner-only exact Fetch routes on DSH's existing authenticated `/api` HTTP/IPC carrier. It does not start another Web server.
+
+## Build and install
 
 ```sh
 npm ci --ignore-scripts
@@ -31,19 +49,21 @@ npm run build
 npm pack
 ```
 
-从 [GitHub Release](https://github.com/FrankieeW/dsh-remote-agents/releases/tag/v0.2.0) 下载[插件安装包](https://github.com/FrankieeW/dsh-remote-agents/releases/download/v0.2.0/dsh-remote-agents-0.2.0.tgz)，或按上面的命令本地构建。在 DSH 插件管理页面选择安装包安装（若该版本界面不支持本地文件，使用 CLI 管理 **web** profile）：
+Install the resulting package through the plugin manager of the **same profile as your running GUI**. For an explicitly selected `web` profile:
 
 ```sh
-dsh plugin --profile web add /absolute/path/dsh-remote-agents-0.2.0.tgz
+dsh plugin --profile web add /absolute/path/dsh-remote-agents-0.3.0.tgz
 ```
 
-安装目标必须与正在使用的 GUI profile 一致。桌面应用的专用 profile 请通过该应用插件管理入口安装，不要用 `web` profile 安装命令冒充修改桌面 profile。安装后按 DSH 提示重新加载插件/重启宿主并刷新原 GUI；本项目不会另起一个替代 GUI，也不自动改动你的 profile。
+For the desktop application, use its plugin management entry rather than installing into an unrelated `web` profile. Refresh the existing GUI after the update; no automatic HMR is promised without a matching `dev:web` watcher.
 
-构建产物包含 Host ESM 与 DSH `__ModuleLoader__` 懒加载客户端工厂。React 使用宿主共享实例。没有启动 `dev:web` watcher 时，不能依赖 HMR。
+The historical [v0.2.0 release](https://github.com/FrankieeW/dsh-remote-agents/releases/tag/v0.2.0) does **not** include unified chat. Build this revision for 0.3.0; an existing public release is not silently replaced.
 
-## SSH 配置
+Build artifacts contain a Host ESM entry and a DSH lazy client factory. React is shared with the Host. The pinned Claude SDK remains an ordinary runtime dependency rather than being embedded into the browser bundle.
 
-手动添加机器仍可使用 alias/主机名；Herdr 导入支持安全解析 `user@host`、`ssh://user@host:port` 等目标并保留独立用户名/端口。不接受任意 SSH 参数、密码或私钥内容。跳板机和密钥位置继续由现有 OpenSSH 配置处理。例如：
+## SSH setup
+
+Use existing OpenSSH configuration for keys and jump hosts:
 
 ```sshconfig
 Host dev-box
@@ -54,42 +74,50 @@ Host dev-box
   IdentitiesOnly yes
 ```
 
-先在自己的终端确认主机指纹并完成认证：
+Verify the host key and authentication yourself first:
 
 ```sh
 ssh dev-box
 ssh -o BatchMode=yes -o StrictHostKeyChecking=yes dev-box 'tmux -V'
 ```
 
-然后在工作台添加名字和 `dev-box`，点击连接检查，再选择远端绝对项目路径启动 Agent。插件不自动接受未知主机指纹，不自动安装远端软件，也不持有 SSH 密码；它使用 `BatchMode=yes`、`StrictHostKeyChecking=yes`，需密钥/ssh-agent 等非交互认证。
+Then add the alias and use an absolute **remote** project path. The plugin uses `BatchMode=yes` and `StrictHostKeyChecking=yes`; it never accepts an unknown fingerprint, stores SSH passwords/private keys, installs remote software or automatically probes imported machines. Herdr imports can preserve safe separate user/port fields.
 
-## 安全边界与持久化
+## Security and persistence
 
-- 只操作专用 tmux socket、随机 session ID、匹配记录和 ownership marker 的会话；不会枚举或关闭用户默认 tmux 会话。
-- 命令使用 argv 调用，SSH 端参数逐一 shell quoting；主机 alias、输入长度、cwd、种类和参数均校验。
-- **所有者可启动 shell 并发送命令，等价于相应本机/SSH 账号的终端权限，不是沙箱。** 不要将 DSH 所有者会话分享给不可信的人。
-- 文本输入按单行发送；不要把输入框当安全的“仅聊天”接口。Shell Agent 的输入会执行命令，CLI 的授权提示需要你自己判断。
-- 默认状态位于 `~/.dsh/remote-agents/fleet.json`，遵循 `DSH_HOME`；文件权限 0600，目录初建 0700，原子写和跨实例锁。可用 `DSH_REMOTE_AGENTS_STATE` 或插件配置 `statePath` 指定其他路径。
-- 同一状态文件表示同一 fleet；不同 profile 如需隔离，请配置不同状态文件。
-- 状态保存机器、目录、启动参数与会话标识，不保存密码/终端 transcript。**不要把 token 或密码放进启动参数**，它们会出现在状态文件和进程列表。
-- 不会在卸载、HMR 或关闭 GUI 时杀掉 Agent。停止按钮是破坏性操作；关闭浏览器不等于停止。
-- 网络失败时不自动重试启动/输入，避免重复执行。启动失败可能已创建会话，请先查看错误和已有记录，不要盲目重复启动。
-- 操作串行并有超时；首版没有后台跨机器并行健康检查。进程被强制杀死可能留下 `.lock`，确认没有其他插件实例写入后才可手动处理，切勿并发删除锁。
+All operations require the DSH owner. **Tool/terminal access is not an OS sandbox** and can have the privileges of the corresponding local/SSH account. Do not share owner access with untrusted users.
 
-## 验证
+### Structured conversations
+
+See [permissions and storage](<docs/unified-chat.md#permissions-and-storage>) for precise CLI policy semantics and limits. Conversation messages/tool data are stored in mode-0600 files next to the fleet state. Live processes and approval callbacks are not serialized. Closing the browser does not stop them; closing a session or unloading the plugin denies pending approvals and stops its structured subprocesses. An interrupted turn is never automatically resent.
+
+Only one live ChatManager may own a chat state directory; configure separate state paths for simultaneous profiles. Existing CLI policy grants can permit tools without a new dialog; the UI only answers actual live requests and never selects remembered approvals automatically.
+
+### Legacy tmux terminals
+
+- Dedicated tmux socket, random session IDs and ownership checks; no inspection or shutdown of unrelated default tmux sessions.
+- Local argv execution and individually shell-quoted SSH parameters, with input validation and bounded operations.
+- Terminal input is an execution interface, not a safe chat-only text field.
+- Default fleet state: `~/.dsh/remote-agents/fleet.json`, respecting `DSH_HOME`. Override with `DSH_REMOTE_AGENTS_STATE` or Host option `statePath`.
+- Fleet state uses atomic mode-0600 writes and a cross-instance lock. It stores machine/project metadata and launch arguments, not terminal transcripts. **Never put secrets in launch arguments.**
+- Legacy tmux sessions intentionally survive plugin unload/restart. Stop is an explicit destructive operation.
+- Failed startup/input is not automatically retried. If a process was created before a failure, inspect its recovery record before trying again.
+
+## Verification
 
 ```sh
 npm test
 npm run build
-# 可选：需要本机 tmux；只创建独立测试会话，结束时停止
+# Optional real isolated tmux test; creates and cleans up only its own test session:
 DSH_FLEET_SMOKE=1 node --test test/local-smoke.test.js
 ```
 
-单元测试覆盖 SSH quoting、校验、所有权、锁、输出上限及 RPC 鉴权。真实 SSH 集成需要你提供可访问的 alias，mock 测试不代表已经连接过你的服务器。
+Tests use synthetic SDK events and fake subprocesses for unified chat. They cover protocol framing, completion correlation, text deduplication, permissions/cancellation, owned continuation, persistence, idempotency, owner-only routing, mixed Workspace grouping, catalog races, native pending/unread precedence and draft/request-ID preservation across content remounts and late acknowledgments. An isolated real DSH web profile was also exercised for direct OMP/Claude/native creation, mixed-list navigation, native/external draft preservation, history reload and light/dark rendering. Native status transitions and the deferred-ACK/remount race were additionally exercised in a browser fixture with synthetic sources. These checks do not validate provider login or send a real model prompt.
 
-## 目录
+## Source map
 
-- [核心 API](<src/core/API.md>)：独立 Node ESM fleet 服务。
-- [Host 插件](<src/index.js>)、[RPC](<src/rpc.js>)：DSH 生命周期与 owner-only RPC。
-- [工作台](<src/client/FleetPage.jsx>)、[客户端入口](<src/client-entry.jsx>)：界面与 DSH slots 接入。
-- [构建脚本](<scripts/build.mjs>)：可发布插件构建。
+- [Chat manager contract](<src/chat/types.md>) and [manager](<src/chat/manager.js>).
+- [Claude adapter](<src/chat/claude.js>) and [OMP adapter](<src/chat/omp.js>).
+- [Workspace browser](<src/client/WorkspaceSidebar.jsx>), [conversation content](<src/client/ChatWorkbench.jsx>) and [native entry integration](<src/client-entry.jsx>).
+- [Fleet API](<src/core/API.md>), [Host entry](<src/index.js>) and [RPC](<src/rpc.js>).
+- [Architecture and upstream references](<docs/unified-chat.md>).
