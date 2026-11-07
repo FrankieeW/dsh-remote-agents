@@ -16,7 +16,7 @@ Native DSH sessions continue to use DSH's own title service.
 | --- | --- | --- |
 | Claude Code | Chat / Tools / To-dos | Recorded tools filter by files, commands and agent calls. The latest recorded to-do list has its own view. |
 | Codex | Chat / Plan / Changes | Recorded plan steps and file-change events have separate views. Valid unified diff hunks use DSH's native colored diff component. |
-| OMP | Chat / Tasks / Tools | Task phases are retained, with completed, active and pending items. Tools filter by files and commands; model entries retain provider information. |
+| OMP | Chat / Tasks / Tools / Models | Task phases are retained, with completed, active and pending items. Tools filter by files and commands. Models edits roles, providers and custom models for the conversation's machine and workspace. |
 
 Tabs support Left/Right, Home and End keys. Switching views keeps the composer and its draft, approval controls, settings and stop control mounted. Opening a different conversation returns to Chat. Suggested prompts in an empty conversation only fill the draft; sending remains explicit.
 

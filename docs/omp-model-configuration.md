@@ -2,6 +2,8 @@
 
 Open the **Models** tab in an OMP conversation, or **Manage OMP roles and providers…** from its model settings. The editor is scoped to that conversation's machine and workspace. Configuration management is validated against OMP **18.18.x**; the older conversation compatibility range is unchanged.
 
+Switching conversation tabs keeps staged configuration edits and the message draft. Save or discard configuration edits before using **Back to conversation**. Opening another conversation resets the editor to that conversation's machine and workspace.
+
 ## Model roles
 
 The editor includes all 16 built-in roles and configured custom roles. Edit **OMP global defaults** or **This project overrides** for the conversation's workspace. Role selectors accept catalog models or OMP role aliases. The currently effective value comes from OMP's configuration CLI and is shown separately from the layer being edited. Direct alias cycles are rejected.

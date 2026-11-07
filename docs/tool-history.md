@@ -2,7 +2,7 @@
 
 New Claude, Codex and OMP turns save every tool event received by the plugin into host-owned files under `tool-history/<session>/<assistant-message>/`, beside `conversations.json`. Local and SSH runtime events use the same archive. Inputs and results are stored as complete JSON values; streamed text is written without the old 4,096-character storage cutoff. These files use owner-only permissions and no browser-supplied paths.
 
-The conversation snapshot remains small: its first 16 tools have bounded previews. **Showing 16 of N tool calls** describes the view, not discarded data. **Browse saved tools** replaces the visible 16-call page, keeping DOM size bounded. **Read full input/result/text** pages through complete values in chunks up to 64 KiB, without splitting UTF-8 characters. Refresh explicitly to see newer tool state during a turn.
+The conversation snapshot remains small: its latest 16 tools have bounded previews, in call order. New calls replace the oldest preview, and restart or OMP-history recovery restores the same latest window. **Showing latest 16 of N tool calls** describes the view, not discarded data. **Browse saved tools** opens the archive from its first page and replaces the visible 16-call page, keeping DOM size bounded. **Read full input/result/text** pages through complete values in chunks up to 64 KiB, without splitting UTF-8 characters. Refresh archived pages explicitly to see newer tool state during a turn.
 
 Search scans full stored input, result and streamed-text files, plus tool names. It uses a literal match (ASCII case-insensitive; other Unicode exact), including content beyond the preview. Search runs outside the conversation state lock so it does not block a running turn's event handling.
 
