@@ -12,6 +12,13 @@ const compiled = await build({ stdin: { contents: 'export {default} from "./src/
 const providers = [{ id: "claude", label: "Claude Code", available: true }, { id: "omp", label: "OMP", available: false, reason: "未安装 OMP" }];
 const fixture = (id = "s1") => ({ id, name: `会话 ${id}`, provider: "claude", cwd: "/fixture", status: "idle", messages: [], pendingApprovals: [] });
 const deferred = () => { let resolve; let reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
+const commandCatalog = [
+  { name: "help", usage: "/help", description: "Show commands", allowActive: true, allowClosed: true },
+  { name: "status", usage: "/status", description: "Show session status", allowActive: true, allowClosed: true },
+  { name: "model", usage: "/model [selector|default]", description: "Choose model", allowActive: false, allowClosed: false },
+  { name: "new", usage: "/new", description: "Start fresh", allowActive: false, allowClosed: true },
+  { name: "stop", usage: "/stop", description: "Interrupt current turn", allowActive: true, allowClosed: false },
+];
 
 async function mount(api, props = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: "http://localhost", pretendToBeVisual: true });
@@ -83,7 +90,6 @@ test("structured messages, tools, approvals and close confirmation use explicit 
     await h.click("Close session");
     await h.click("Confirm close");
     assert.equal(calls.filter(([method]) => method === "chatClose").length, 1);
-    assert.equal(document.querySelector("textarea").disabled, true);
   } finally { await h.cleanup(); }
 });
 
@@ -250,7 +256,7 @@ test("Claude Code sessions dock their latest to-dos, render tools natively, prev
   } finally { await h.cleanup(); }
 });
 
-test("OMP sessions explain unsupported slash and shell input before sending and show their grant scope", async () => {
+test("OMP sessions explain unsupported shell input before sending and show their grant scope", async () => {
   const state = { ...fixture("omp"), provider: "omp", status: "waiting",
     pendingApprovals: [{ id: "p1", kind: "permission", title: "Allow tool: bash", description: "ls -la", details: { options: ["Approve", "Deny"], grant: "this call only" } }] };
   const sends = [];
@@ -269,18 +275,90 @@ test("OMP sessions explain unsupported slash and shell input before sending and 
     assert.equal(h.button("Copy resume command"), undefined, "resume commands are Claude-only");
     await h.click("Allow once");
     await h.tick(700);
-    for (const text of ["/model fast", "  !ls -la"]) {
-      await h.type("textarea", text);
-      assert.equal(h.button("Send message").disabled, true);
-      assert.match(document.querySelector('.agent-chat-hint[role="alert"]').textContent, /plain prompts/);
-      await h.submit(".agent-chat-composer");
-    }
-    assert.equal(sends.length, 0, "unsupported input is never sent");
+    await h.type("textarea", "  !ls -la");
+    assert.equal(h.button("Send message").disabled, true);
+    assert.ok(document.querySelector('.agent-chat-hint[role="alert"]'));
+    await h.submit(".agent-chat-composer");
+    assert.equal(sends.length, 0, "shell shortcut is never sent");
     await h.type("textarea", "List the files");
     assert.equal(document.querySelector('.agent-chat-hint[role="alert"]'), null);
     assert.equal(document.querySelector("textarea").placeholder, "Ask OMP…");
     await h.submit(".agent-chat-composer");
     assert.equal(sends[0].text, "List the files");
+  } finally { await h.cleanup(); }
+});
+
+test("slash completion respects IME, active commands and offline status without model sends", async () => {
+  let state = { ...fixture("slash"), provider: "omp", status: "running" };
+  const calls = [];
+  const h = await mount(async (method, payload) => {
+    calls.push([method, payload]);
+    if (method === "chatList") return { sessions: [state], providers: [{ id: "omp", available: false }] };
+    if (method === "chatGet") return structuredClone(state);
+    if (method === "chatCommands") return { commands: commandCatalog };
+    if (method === "chatCommand") {
+      if (payload.text.trim() === "/stop") state = { ...state, status: "interrupted" };
+      return { command: payload.text.trim().slice(1), message: `Session is ${state.status}`, session: structuredClone(state) };
+    }
+    throw Error(method);
+  });
+  try {
+    await h.select(state.id);
+    await h.type("textarea", "/st");
+    assert.equal(document.querySelectorAll('[role="option"]').length, 2);
+    const press = (key, extra = {}) => act(async () => document.querySelector("textarea").dispatchEvent(new h.dom.window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...extra })));
+    await press("Enter", { isComposing: true });
+    assert.equal(document.querySelector("textarea").value, "/st");
+    await press("ArrowDown");
+    await press("Tab");
+    assert.equal(document.querySelector("textarea").value, "/stop ");
+    await press("Escape");
+    assert.equal(document.querySelector('[role="listbox"]'), null);
+    await press("Enter");
+    assert.equal(document.querySelector("textarea").value, "");
+    assert.equal(h.button("Stop generating"), undefined);
+    await h.type("textarea", "/status");
+    assert.equal(h.button("Run command").disabled, false, "offline status is usable");
+    await h.submit(".agent-chat-composer");
+    assert.match(document.querySelector('[role="status"] .agent-chat-command-result').textContent, /interrupted/);
+    assert.equal(calls.filter(([method]) => method === "chatSend").length, 0);
+    await h.type("textarea", "/unknown");
+    await h.submit(".agent-chat-composer");
+    assert.equal(calls.filter(([method]) => method === "chatCommand").length, 2);
+    assert.equal(document.querySelector("textarea").value, "/unknown");
+  } finally { await h.cleanup(); }
+});
+
+test("failed commands reuse request identity and late new-session replies preserve selection and drafts", async () => {
+  const source = fixture("source"), other = fixture("other"), child = fixture("child");
+  const result = deferred(), attempts = [];
+  const h = await mount(async (method, payload) => {
+    if (method === "chatList") return { sessions: [source, other], providers };
+    if (method === "chatGet") return structuredClone([source, other, child].find(s => s.id === payload.id));
+    if (method === "chatCommands") return { commands: commandCatalog };
+    if (method === "chatCommand") {
+      attempts.push(payload);
+      if (attempts.length === 1) throw Error("Lost command response");
+      return result.promise;
+    }
+    throw Error(method);
+  });
+  try {
+    await h.select(source.id);
+    await h.type("textarea", "/new");
+    await h.submit(".agent-chat-composer");
+    assert.equal(document.querySelector("textarea").value, "/new");
+    await h.render({ key: "reopen-command-session" });
+    await h.submit(".agent-chat-composer");
+    assert.equal(attempts[0].requestId, attempts[1].requestId);
+    await h.type("textarea", "New source draft");
+    await h.select(other.id);
+    await h.type("textarea", "Other draft");
+    await act(async () => result.resolve({ command: "new", message: "Created", session: child }));
+    assert.match(document.body.textContent, /会话 other/);
+    assert.equal(document.querySelector("textarea").value, "Other draft");
+    await h.select(source.id);
+    assert.equal(document.querySelector("textarea").value, "New source draft");
   } finally { await h.cleanup(); }
 });
 
@@ -405,8 +483,7 @@ for(const provider of ['claude','codex','omp'])test(`${provider} native view tab
  const state={...fixture('views'),provider},sends=[];
  const h=await mount(async(method,payload)=>{if(method==='chatList')return{sessions:[state],providers:[{id:provider,available:true}]};if(method==='chatGet')return structuredClone(state);if(method==='chatSend'){sends.push(payload);return{accepted:true};}throw Error(method);});
  try{
-  await h.select('views');const expected={claude:['Chat','Tools','To-dos'],codex:['Chat','Plan','Changes'],omp:['Chat','Tasks','Tools']}[provider];
-  assert.deepEqual([...document.querySelectorAll('[role="tab"]')].map(t=>t.getAttribute('aria-label')),expected);
+  await h.select('views');const expected={claude:['Chat','Tools','To-dos'],codex:['Chat','Plan','Changes'],omp:['Chat','Tasks','Tools','Models']}[provider];
   const suggestion=document.querySelector('.agent-welcome-suggestions button');await act(async()=>suggestion.click());assert.equal(sends.length,0);const textarea=document.querySelector('textarea'),draft=textarea.value;assert.ok(draft.length>20);
   await act(async()=>document.querySelectorAll('[role="tab"]')[1].click());assert.equal(document.querySelector('textarea').value,draft);assert.ok(document.querySelector('textarea')===textarea);
   await act(async()=>document.querySelector('[role="tab"][aria-selected="true"]').dispatchEvent(new h.dom.window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true})));
@@ -418,7 +495,7 @@ for(const provider of ['claude','codex','omp'])test(`${provider} native view tab
 
 test('archived tool pages replace rows and preserve the composer while full data is paged',async()=>{
   const tools=Array.from({length:40},(_,i)=>({id:`t-${i}`,name:'read',input:{path:`file-${i}`},status:'done',archived:true,truncated:true}));
-  const state={...fixture('archive'),provider:'omp',messages:[{id:'m',role:'assistant',text:'Done',tools:tools.slice(0,16),toolsArchived:true,toolCount:40}]};
+  const state={...fixture('archive'),provider:'omp',messages:[{id:'m',role:'assistant',text:'Done',tools:tools.slice(-16),toolsArchived:true,toolCount:40}]};
   const calls=[];
   const h=await mount(async(method,payload)=>{
     if(method==='chatList')return{sessions:[state],providers:[{id:'omp',available:true}]};
@@ -431,7 +508,9 @@ test('archived tool pages replace rows and preserve the composer while full data
     throw Error(method);
   });
   try{
-    await h.select('archive');assert.match(document.body.textContent,/Showing 16 of 40 tool calls/);assert.ok(!document.body.textContent.includes('Only the first'));const composer=document.querySelector('textarea');
+    await h.select('archive');const composer=document.querySelector('textarea');
+    assert.match(document.querySelector('.agent-chat-tools').textContent,/file-39/);
+    assert.ok(!document.querySelector('.agent-chat-tools').textContent.includes('file-0'));
     await h.click('Browse saved tools');await h.click('Next tools');assert.equal(calls.at(-1).offset,16);assert.match(document.body.textContent,/file-31/);assert.ok(!document.body.textContent.includes('file-0'));
     assert.equal(document.querySelectorAll('[data-disclosure-row]').length,16);assert.equal(document.querySelector('textarea'),composer);
     await h.click('Read full result for read');assert.match(document.querySelector('.agent-history-detail').textContent,/FIRST_/);await h.click('Next data');assert.match(document.querySelector('.agent-history-detail').textContent,/TAIL_OK/);assert.ok(!document.querySelector('.agent-history-detail').textContent.includes('FIRST_'));

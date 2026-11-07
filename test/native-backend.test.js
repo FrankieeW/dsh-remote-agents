@@ -362,6 +362,7 @@ test("Rust OMP history indexes more than 16 tools and never returns provider cre
   const recovered = await f.call('chatRecoverOmpTools',{id:sid,messageId});
   assert.equal(recovered.messages[0].toolCount,21);
   assert.equal(recovered.messages[0].toolsArchived,true);
+  assert.deepEqual(recovered.messages[0].tools.map(tool => tool.id), Array.from({length:16}, (_, i) => `tool-${i + 5}`));
   const full = await f.call('chatToolHistory',{id:sid,messageId,toolId:'tool-20',field:'result'});
   assert.equal(JSON.parse(full.text).content[0].text.length,10000);
   assert.ok(!full.text.includes('PRIVATE'));
@@ -373,6 +374,10 @@ test('full tool archives retain later calls, Unicode output, search, streams and
   const admitted=await f.call('chatSend',{id:session.id,text:'MANY_TOOLS',requestId:'many'});
   const state=await settled(f,session.id), message=state.messages.at(-1);
   assert.equal(message.toolCount,40);assert.equal(message.tools.length,16);assert.equal(message.toolsTruncated,undefined);
+  const latestIds = Array.from({length:16}, (_, i) => `many-${i + 24}`);
+  assert.deepEqual(message.tools.map(tool => tool.id), latestIds);
+  assert.equal(message.tools.find(tool => tool.id === 'many-38').status, 'done');
+  assert.equal(message.tools.find(tool => tool.id === 'many-38').text, 'stream-start\nstream-end');
   assert.equal(message.latestTodoTool.result.details.phases[0].tasks[0].content,'Fortieth tool kept');
   const p={id:session.id,messageId:admitted.assistantMessageId};
   const ids=[];let offset=0;
@@ -388,7 +393,9 @@ test('full tool archives retain later calls, Unicode output, search, streams and
   await assert.rejects(f.call('chatToolHistory',{...p,toolId:'../../bad',field:'result'}),{code:'NOT_FOUND'});
   await assert.rejects(f.call('chatToolHistory',{...p,toolId:'many-38',field:'../meta.json'}),{code:'INVALID_INPUT'});
   await f.restart();
-  assert.equal((await f.call('chatGet',{id:session.id})).messages.at(-1).toolCount,40);
+  const restored = (await f.call('chatGet',{id:session.id})).messages.at(-1);
+  assert.equal(restored.toolCount,40);
+  assert.deepEqual(restored.tools.map(tool => tool.id), latestIds);
   assert.equal((await f.call('chatToolHistory',{...p,offset:32})).tools.length,8);
   // Archived SSH-session reads are host-owned and need no live machine connection.
   await f.backend.close();
@@ -593,4 +600,99 @@ test("existing default titles are backfilled without changing custom names or me
   assert.equal(manual.name, "My custom title");
   assert.equal(manual.nameSource, "manual");
   assert.deepEqual(auto.messages, sessions[0].messages);
+});
+
+for (const provider of ["claude", "codex", "omp"])
+  test(`Rust ${provider}: commands preserve history and settings revisions across restart`, async (t) => {
+    const f = await fixture(t);
+    const session = await f.call("chatCreate", { provider, cwd: f.root });
+    const command = (text, extra = {}) => f.call("chatCommand", {
+      id: session.id, text, requestId: text, ...extra,
+    });
+    await f.call("chatSend", { id: session.id, text: "hello", requestId: "prompt" });
+    const original = await settled(f, session.id);
+    const model = await command("/model custom/example", { expectedRevision: 0 });
+    assert.equal(model.session.settings.model, "custom/example");
+    await assert.rejects(command("/effort low", { expectedRevision: 0 }), { code: "CONFLICT" });
+    const effort = await command("/effort low", { expectedRevision: 1 });
+    assert.equal(effort.session.settings.effort, "low");
+    await assert.rejects(command("/permissions invalid-mode"), { code: "INVALID_INPUT" });
+    await command("/rename 命令会话");
+    await command("/pin on");
+    await command("/archive on");
+    const beforeRestart = await f.call("chatGet", { id: session.id });
+    assert.equal(beforeRestart.name, "命令会话");
+    assert.equal(beforeRestart.pinned, true);
+    assert.equal(beforeRestart.archived, true);
+    assert.equal(beforeRestart.settingsRevision, 2);
+    assert.equal(beforeRestart.providerSessionId, original.providerSessionId);
+    assert.deepEqual(beforeRestart.messages, original.messages);
+    const exported = await command("/export json");
+    assert.deepEqual(JSON.parse(exported.file.content).messages, original.messages);
+    await f.restart();
+    const restored = await f.call("chatGet", { id: session.id });
+    assert.equal(restored.settings.model, "custom/example");
+    assert.equal(restored.settings.effort, "low");
+    assert.equal(restored.name, "命令会话");
+    assert.equal(restored.pinned, true);
+    await command("/model default", { expectedRevision: 2 });
+    const reset = await command("/effort default", { expectedRevision: 3 });
+    assert.equal(reset.session.settings.model, null);
+    assert.equal(reset.session.settings.effort, null);
+  });
+
+test("Rust slash admission fails without transcript pollution; active commands expire approvals", async (t) => {
+  const f = await fixture(t);
+  for (const provider of ["claude", "codex", "omp"]) {
+    const session = await f.call("chatCreate", { provider, cwd: f.root });
+    for (const text of ["/model example", "/unknown", ...(provider === "omp" ? [" !ls"] : [])]) {
+      await assert.rejects(f.call("chatSend", { id: session.id, text, requestId: text }), { code: "UNSUPPORTED" });
+    }
+    const clean = await f.call("chatGet", { id: session.id });
+    assert.equal(clean.status, "idle");
+    assert.deepEqual(clean.messages, []);
+    await assert.rejects(f.call("chatCommand", { id: session.id, text: "/unknown", requestId: "unknown" }));
+    await f.call("chatSend", { id: session.id, text: "APPROVAL", requestId: "approval" });
+    const pending = await settled(f, session.id, "waiting");
+    await assert.rejects(f.call("chatCommand", { id: session.id, text: "/rename running", requestId: "rename" }), { code: "BUSY" });
+    await assert.rejects(f.call("chatCommand", { id: session.id, text: "/new", requestId: "new" }), { code: "BUSY" });
+    const status = await f.call("chatCommand", { id: session.id, text: "/status", requestId: "status" });
+    assert.equal(status.session.status, "waiting");
+    await f.call("chatCommand", { id: session.id, text: "/stop", requestId: "stop" });
+    const stopped = await settled(f, session.id, "interrupted");
+    assert.deepEqual(stopped.pendingApprovals, []);
+    await assert.rejects(f.call("chatApprove", { id: session.id, approvalId: pending.pendingApprovals[0].id, allow: true }), { code: "APPROVAL_NOT_FOUND" });
+  }
+});
+
+test("Rust new-session command retries survive restart and offline closed sessions", async (t) => {
+  const f = await fixture(t);
+  const source = await f.call("chatCreate", { provider: "omp", cwd: f.root, settings: { model: "custom/example", effort: "low", permissions: "cli" } });
+  await f.call("chatSend", { id: source.id, text: "hello", requestId: "old" });
+  const old = await settled(f, source.id);
+  await f.call("chatClose", { id: source.id });
+  await f.backend.close();
+  await rm(f.config.ompExecutable);
+  await f.restart();
+  const command = text => f.call("chatCommand", { id: source.id, text, requestId: "offline-" + text });
+  const help = await command("/help");
+  assert.ok(help.commands.some(c => c.name === "new"));
+  const status = await command("/status");
+  assert.equal(status.session.status, "closed");
+  const file = await command("/export json");
+  assert.deepEqual(JSON.parse(file.file.content).messages, old.messages);
+  await assert.rejects(command("/rename closed"), { code: "CLOSED" });
+  const created = await command("/new");
+  assert.notEqual(created.session.id, source.id);
+  assert.deepEqual(created.session.settings, source.settings);
+  assert.equal(created.session.cwd, source.cwd);
+  assert.equal(created.session.machineId, source.machineId);
+  assert.deepEqual(created.session.messages, []);
+  assert.equal(created.session.providerSessionId, undefined);
+  await f.restart();
+  const retry = await command("/new");
+  assert.equal(retry.session.id, created.session.id);
+  assert.equal((await f.call("chatList")).sessions.length, 2);
+  await assert.rejects(f.call("chatCommand", { id: source.id, text: "/status", requestId: "offline-/new" }), { code: "CONFLICT" });
+  assert.deepEqual((await f.call("chatGet", { id: source.id })).messages, old.messages);
 });

@@ -1,4 +1,4 @@
-use crate::{chat::ChatStore, common::*, fleet::Fleet, hosts::Host, providers::Registry, runtimes};
+use crate::{chat::ChatStore, chat_commands, common::*, fleet::Fleet, hosts::Host, providers::Registry, runtimes};
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
@@ -125,6 +125,36 @@ impl Engine {
                 )
             }
             "chatGet" => self.chat().await?.lock().await.snapshot(s(&p, "id")),
+            "chatCommands" => {
+                let session = self.chat().await?.lock().await.session(s(&p, "id"))?;
+                Ok(json!({"commands":chat_commands::catalog(),"provider":session["provider"]}))
+            }
+            "chatCommand" => {
+                let command = chat_commands::parse(&p)?;
+                let _gate = self.gate.lock().await;
+                let chat = self.chat().await?;
+                let sid = s(&p, "id");
+                if let Some(receipt) = chat.lock().await.command_receipt(sid, &command)? {
+                    return Ok(receipt);
+                }
+                if command.name == "stop" {
+                    chat.lock().await.command_guard(sid, &command)?;
+                    let session = self.stop_chat(sid, false).await?;
+                    return Ok(json!({"command":"stop","message":"Turn interrupted.","session":session}));
+                }
+                let options = if command.name == "model" && command.argument.is_empty() {
+                    let session = {
+                        let store = chat.lock().await;
+                        store.command_guard(sid, &command)?;
+                        store.session(sid)?
+                    };
+                    let host = self.host(s(&session, "machineId")).await?;
+                    Some(self.registry.options(&host, &session, false).await?)
+                } else {
+                    None
+                };
+                chat.lock().await.command(&p, &command, options.as_ref())
+            }
             "chatCreate" => {
                 let host = self
                     .host(
@@ -209,6 +239,7 @@ impl Engine {
                 let _gate = self.gate.lock().await;
                 let chat = self.chat().await?;
                 let session = chat.lock().await.session(s(&p, "id"))?;
+                chat_commands::reject_prompt(s(&session, "provider"), &p["text"])?;
                 let host = self.host(s(&session, "machineId")).await?;
                 let executable = self
                     .registry
@@ -251,22 +282,7 @@ impl Engine {
             "chatInterrupt" | "chatClose" => {
                 let _gate = self.gate.lock().await;
                 let sid = s(&p, "id");
-                let result = self
-                    .chat()
-                    .await?
-                    .lock()
-                    .await
-                    .stop(sid, method == "chatClose")?;
-                if let Some(mut task) = self.tasks.lock().await.remove(sid) {
-                    if tokio::time::timeout(Duration::from_millis(800), &mut task)
-                        .await
-                        .is_err()
-                    {
-                        task.abort();
-                        let _ = task.await;
-                    }
-                }
-                Ok(result)
+                self.stop_chat(sid, method == "chatClose").await
             }
             "agentUpdatePlan" => {
                 let host = self.host(s(&p, "machineId")).await?;
@@ -301,6 +317,19 @@ impl Engine {
             | "workspaceRemove" => self.fleet.lock().await.call(method, &p).await,
             _ => err("NOT_FOUND", "Unknown operation"),
         }
+    }
+    async fn stop_chat(&self, sid: &str, close: bool) -> Result<Value> {
+        let result = self.chat().await?.lock().await.stop(sid, close)?;
+        if let Some(mut task) = self.tasks.lock().await.remove(sid) {
+            if tokio::time::timeout(Duration::from_millis(800), &mut task)
+                .await
+                .is_err()
+            {
+                task.abort();
+                let _ = task.await;
+            }
+        }
+        Ok(result)
     }
     pub async fn shutdown(&self) {
         if self.stopped.swap(true, Ordering::Relaxed) {

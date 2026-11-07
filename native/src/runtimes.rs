@@ -382,12 +382,6 @@ async fn omp(
     mut controls: mpsc::Receiver<Control>,
     tx: mpsc::Sender<Control>,
 ) -> Result<()> {
-    if prompt.trim_start().starts_with(['/', '!']) {
-        return err(
-            "UNSUPPORTED",
-            "OMP slash and shell commands are not supported in structured chat",
-        );
-    }
     let cwd = ctx.host.directory(s(&ctx.session, "cwd")).await?;
     let directory = if ctx.host.remote() {
         if !safe_id(&ctx.namespace) || !safe_id(&ctx.sid) {

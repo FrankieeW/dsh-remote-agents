@@ -1,6 +1,6 @@
 # Rust backend
 
-This development branch (`0.5.0-alpha.4`) replaces the JavaScript business backend with a Rust sidecar. The public 0.4.1 release remains unchanged until a new release is explicitly published.
+This development branch (`0.5.0-alpha.5`) replaces the JavaScript business backend with a Rust sidecar. The public 0.4.1 release remains unchanged until a new release is explicitly published.
 
 ## Boundary
 
@@ -8,6 +8,7 @@ This development branch (`0.5.0-alpha.4`) replaces the JavaScript business backe
 - `src/native/claude-bridge.js`: the official Claude Agent SDK invocation and raw event/approval transport only. Rust validates settings, interprets events, owns conversation state, and decides how approvals are resolved. SSH command construction for the SDK runs through the Rust executable.
 - `native/src/engine.rs`: RPC dispatch and coordination between session operations, CLI updates and shutdown.
 - `chat.rs`, `common.rs`: persisted state, exclusive live ownership, atomic mode-0600 writes, idempotent admission, settings revisions, metadata, search/export and live-only approvals.
+- `chat_commands.rs`: shared slash-command catalog, parsing, lifecycle checks, settings/metadata operations, export and atomic request-deduplicated fresh conversations. Commands run without a provider prompt; only model catalog discovery needs a CLI.
 - `hosts.rs`, `fleet.rs`, `herdr.rs`: registered SSH hosts, directory browsing, dedicated tmux socket ownership, and static preview/confirmed import. No default tmux sessions or unrelated native conversations are controlled.
 - `protocol.rs`, `runtimes.rs`, `providers.rs`: bounded framing, OMP v2 chunk assembly, native Codex app-server, Claude SDK events, lifecycle, model/configuration metadata and source-aware pinned updates.
 - `history.rs`: indexes native OMP JSONL parent links and byte offsets, then reads only the selected records. It validates session/cwd identity and ordered prompt hashes. Provider envelopes and credential identifiers are excluded from responses.

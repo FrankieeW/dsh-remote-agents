@@ -6,6 +6,7 @@ pub mod hosts;
 pub mod settings;
 
 pub mod chat;
+mod chat_commands;
 pub mod protocol;
 
 pub mod providers;

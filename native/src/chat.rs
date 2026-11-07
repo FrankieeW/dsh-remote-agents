@@ -79,6 +79,17 @@ impl ChatStore {
                 || absolute(s(session, "cwd")).is_err()
                 || !session["messages"].is_array()
                 || !session["requests"].is_array()
+                || session.get("commandRequests").is_some_and(|receipts| {
+                    receipts.as_array().is_none_or(|receipts| {
+                        let mut requests = std::collections::HashSet::new();
+                        receipts.len() > 128 || receipts.iter().any(|receipt| {
+                            required(receipt, "requestId", 128).is_err()
+                                || !requests.insert(s(receipt, "requestId"))
+                                || !safe_id(s(receipt, "sessionId"))
+                                || s(receipt, "textHash").len() != 64
+                        })
+                    })
+                })
             {
                 return err("INVALID_STATE", "Invalid session record");
             }
@@ -147,7 +158,7 @@ impl ChatStore {
                     message["toolCount"] = json!(rows.len());
                     message["tools"] = json!(
                         rows.iter()
-                            .take(16)
+                            .skip(rows.len().saturating_sub(16))
                             .map(|r| store.tools.preview(&sid, &mid, s(r, "id"), 4096))
                             .collect::<Result<Vec<_>>>()?
                     );
@@ -195,6 +206,7 @@ impl ChatStore {
             }
         }
         s.as_object_mut().unwrap().remove("requests");
+        s.as_object_mut().unwrap().remove("commandRequests");
         s["pendingApprovals"] = json!(
             self.pending
                 .values()
@@ -255,6 +267,16 @@ impl ChatStore {
         }
     }
     pub fn create(&mut self, p: &Value, cwd: &str) -> Result<Value> {
+        let v = self.new_session(p, cwd)?;
+        let sid = s(&v, "id").to_owned();
+        self.state["sessions"].as_array_mut().unwrap().push(v);
+        if let Err(e) = self.save() {
+            self.state["sessions"].as_array_mut().unwrap().pop();
+            return Err(e);
+        }
+        self.snapshot(&sid)
+    }
+    pub(crate) fn new_session(&self, p: &Value, cwd: &str) -> Result<Value> {
         let provider = s(p, "provider");
         if !matches!(provider, "codex" | "claude" | "omp") {
             return err("UNSUPPORTED", "Provider unavailable");
@@ -276,16 +298,7 @@ impl ChatStore {
         if self.state["sessions"].as_array().unwrap().len() >= 256 {
             return err("STATE_LIMIT", "Maximum session count reached");
         }
-        let v = json!({"id":id(),"provider":provider,"name":name,"nameSource":if p.get("name").is_some(){"manual"}else{"auto"},"cwd":cwd,"machineId":p.get("machineId").cloned().unwrap_or(json!("local")),"settings":settings,"settingsRevision":0,"status":"idle","messages":[],"requests":[],"createdAt":now(),"updatedAt":now()});
-        self.state["sessions"]
-            .as_array_mut()
-            .unwrap()
-            .push(v.clone());
-        if let Err(e) = self.save() {
-            self.state["sessions"].as_array_mut().unwrap().pop();
-            return Err(e);
-        }
-        self.snapshot(s(&v, "id"))
+        Ok(json!({"id":id(),"provider":provider,"name":name,"nameSource":if p.get("name").is_some(){"manual"}else{"auto"},"cwd":cwd,"machineId":p.get("machineId").cloned().unwrap_or(json!("local")),"settings":settings,"settingsRevision":0,"status":"idle","messages":[],"requests":[],"createdAt":now(),"updatedAt":now()}))
     }
     pub fn configure(&mut self, p: &Value) -> Result<Value> {
         let sid = s(p, "id");
@@ -378,6 +391,7 @@ impl ChatStore {
         let index = self.index(sid)?;
         let old = self.state["sessions"][index].clone();
         let text = text(&p["text"], 65536, true)?;
+        crate::chat_commands::reject_prompt(s(&old, "provider"), &p["text"])?;
         if text.trim().is_empty() {
             return err("INVALID_INPUT", "Message is empty");
         }
@@ -482,6 +496,9 @@ impl ChatStore {
                             *old = tool;
                         } else {
                             rows.push(tool);
+                            if rows.len() > 16 {
+                                rows.remove(0);
+                            }
                         }
                     }
                     if let Some(tool) = todo {
@@ -700,7 +717,7 @@ impl ChatStore {
     }
     pub fn export(&self, sid: &str, format: &str) -> Result<Value> {
         let mut session = self.session(sid)?;
-        for k in ["requests", "providerSessionId", "effectiveSettings"] {
+        for k in ["requests", "commandRequests", "providerSessionId", "effectiveSettings"] {
             session.as_object_mut().unwrap().remove(k);
         }
         if format == "json" {
@@ -834,7 +851,7 @@ impl ChatStore {
         let rows = self.tools.index(&sid, &mid)?;
         message["tools"] = json!(
             rows.iter()
-                .take(16)
+                .skip(rows.len().saturating_sub(16))
                 .map(|r| self.tools.preview(&sid, &mid, s(r, "id"), 4096))
                 .collect::<Result<Vec<_>>>()?
         );

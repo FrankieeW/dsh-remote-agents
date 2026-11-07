@@ -1,6 +1,7 @@
 import { createPoller } from "./polling.js";
 import { diagnose } from "./diagnostics.js";
 import { ChatSettings } from "./chat-settings.jsx";
+import OmpModelsPage from "./OmpModelsPage.jsx";
 import { AgentViewTabs, AgentWelcome, AgentDetailView } from "./agent-views.jsx";
 import { agentViewData } from "./agent-view-data.js";
 import React, { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -12,6 +13,7 @@ import { TodoDock } from "./chat-todos.jsx";
 import AgentLogo from "./AgentLogo.jsx";
 import { agentProfile, inputIssue } from "./agent-profiles.js";
 import { latestTodos } from "./tool-presentation.js";
+import { commandInput, commandUnavailable, downloadChatFile } from "./chat-commands.js";
 
 const running = (session) => ["running", "starting", "waiting", "waiting_approval", "awaiting_approval"].includes(session?.status) || !!session?.pendingApprovals?.length;
 const errorText = (error) => typeof error === "string" ? error : error?.message || "The request failed. Please try again.";
@@ -49,13 +51,19 @@ function Notice({ error, children, detail }) {
 }
 
 /** Content-only conversation; navigation and creation belong to the Workspace. */
-export default function ChatWorkbench({ api, store, onOpenOmpModels }) {
+export default function ChatWorkbench({ api, store }) {
   const { sessions, providers, selectedId, drafts, machines, configRevision } = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const { detail, setDetail, getError, epoch, refresh } = useSessionDetail(api, store, selectedId);
   const [busy, setBusy] = useState("");
   const [actionError, setActionError] = useState("");
   const [settingsStatus, setSettingsStatus] = useState("");
   const [viewState, setViewState] = useState({ id: '', view: 'chat' });
+  const [modelsSessionId, setModelsSessionId] = useState("");
+  const [catalog, setCatalog] = useState({ id: "", commands: [] });
+  const [commandResult, setCommandResult] = useState(null);
+  const selectionVersion = useRef(0);
+  const lastSelection = useRef(selectedId);
+  if (lastSelection.current !== selectedId) { lastSelection.current = selectedId; selectionVersion.current++; }
   const viewsId = useId();
   const [closeTarget, setCloseTarget] = useState(null);
   const alive = useRef(false);
@@ -66,13 +74,21 @@ export default function ChatWorkbench({ api, store, onOpenOmpModels }) {
   const setDrafts = store.setDrafts;
 
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-  useEffect(() => { setActionError(""); setSettingsStatus(""); setCloseTarget(null); setViewState({ id: selectedId, view: 'chat' }); autoScroll.current = true; }, [selectedId]);
+  useEffect(() => { setActionError(""); setSettingsStatus(""); setCommandResult(previous => previous?.id === selectedId ? previous : null); setCloseTarget(null); setViewState({ id: selectedId, view: 'chat' }); autoScroll.current = true; }, [selectedId]);
+  useEffect(() => {
+    let cancelled = false;
+    setCatalog({ id: selectedId, commands: [] });
+    if (selectedId) Promise.resolve().then(() => api("chatCommands", { id: selectedId })).then(value => {
+      if (!cancelled && Array.isArray(value?.commands)) setCatalog({ id: selectedId, commands: value.commands });
+    }, () => { /* Older hosts can still send ordinary messages. */ });
+    return () => { cancelled = true; };
+  }, [api, selectedId]);
 
   const session = detail?.id === selectedId ? detail : null;
   const summary = sessions.find((item) => item.id === selectedId);
   const provider = session?.provider || summary?.provider;
   const view = viewState.id === selectedId ? viewState.view : 'chat';
-  const changeView = value => { setViewState({ id: selectedId, view: value }); autoScroll.current = value === 'chat'; };
+  const changeView = value => { if (value === 'models') setModelsSessionId(selectedId); setViewState({ id: selectedId, view: value }); autoScroll.current = value === 'chat'; };
   const viewData = useMemo(() => agentViewData(session), [session]);
   useEffect(() => {
     const node = scroller.current;
@@ -94,25 +110,65 @@ export default function ChatWorkbench({ api, store, onOpenOmpModels }) {
   const active = running(session);
   const closed = session?.status === "closed";
   const unavailable = session && runtime?.available !== true ? runtime?.reason || "This runtime is unavailable. Messages cannot be sent right now." : "";
-  const canSend = !!session && !active && !closed && !unavailable && !!draft.trim() && !busy && !inputIssue(provider, draft);
+  const commands = catalog.id === selectedId ? catalog.commands : [];
+  const parsedCommand = commandInput(draft, commands);
+  const commandBlocked = parsedCommand?.exact ? commandUnavailable(parsedCommand.exact, { active, closed }) : "";
+  const canSend = !!session && !!draft.trim() && !busy && !inputIssue(provider, draft) && (parsedCommand ? !!parsedCommand.exact && !commandBlocked : !active && !closed && !unavailable);
   const todos = useMemo(() => latestTodos(session?.messages), [session?.messages]);
 
   async function act(label, operation) {
     if (lock.current) return;
+    const version = selectionVersion.current;
     lock.current = true;
     setBusy(label); setActionError("");
     try { await operation(); }
-    catch (error) { if (alive.current) setActionError(errorText(error)); }
+    catch (error) { if (alive.current && version === selectionVersion.current && store.getSnapshot().selectedId === selectedId) setActionError(errorText(error)); }
     finally { lock.current = false; if (alive.current) setBusy(""); }
   }
   function send(event) {
     event?.preventDefault();
+    if (parsedCommand) {
+      if (!parsedCommand.exact) { setActionError(commands.length ? "Unknown slash command. Type /help to see available commands." : "Session commands are unavailable. Reload the session and try again."); return; }
+      if (commandBlocked) { setActionError(commandBlocked); return; }
+      if (!canSend) return;
+      const id = selectedId, text = draft, version = selectionVersion.current;
+      act("Run command", async () => {
+        let attempt = retries.current.get(id);
+        if (!attempt || attempt.text !== text || attempt.kind !== "command") {
+          if (!globalThis.crypto?.randomUUID) throw new Error("This browser cannot generate secure request IDs. Please use a secure connection.");
+          attempt = { text, requestId: globalThis.crypto.randomUUID(), kind: "command" };
+          retries.current.set(id, attempt);
+        }
+        epoch.current++;
+        const result = await api("chatCommand", { id, text, requestId: attempt.requestId, expectedRevision: session.settingsRevision || 0 });
+        if (!result || typeof result.command !== "string" || typeof result.message !== "string") throw new Error("The server did not confirm the command result. Your command is preserved for retry.");
+        if (result.session && (!result.session.id || !Array.isArray(result.session.messages) || !Array.isArray(result.session.pendingApprovals))) throw new Error("The command returned an invalid session snapshot. Retry the command to recover its result.");
+        if (result.session) store.update(result.session);
+        setDrafts(previous => ({ ...previous, [id]: previous[id] === text ? "" : previous[id] }));
+        if (retries.current.get(id) === attempt) retries.current.delete(id);
+        if (alive.current && version === selectionVersion.current && store.getSnapshot().selectedId === id) {
+          epoch.current++;
+          setCommandResult({ id, ...result });
+          if (Array.isArray(result.commands)) setCatalog({ id, commands: result.commands });
+          if (result.session) {
+            if (result.session.id !== id) {
+              setDetail(result.session);
+              setCommandResult({ ...result, id: result.session.id });
+              store.select(result.session.id);
+            } else setDetail(result.session);
+          }
+          if (result.file) downloadChatFile(result.file);
+          void refresh();
+        }
+      });
+      return;
+    }
     if (!canSend) return;
     const id = selectedId;
     const text = draft;
     act("Send message", async () => {
       let attempt = retries.current.get(id);
-      if (!attempt || attempt.text !== text) {
+      if (!attempt || attempt.text !== text || attempt.kind === "command") {
         if (!globalThis.crypto?.randomUUID) throw new Error("This browser cannot generate secure request IDs. Please use a secure connection.");
         attempt = { text, requestId: globalThis.crypto.randomUUID() };
         retries.current.set(id, attempt);
@@ -190,17 +246,19 @@ export default function ChatWorkbench({ api, store, onOpenOmpModels }) {
           <h2>What would you like to work on?</h2>
           <AgentWelcome provider={provider} workspace={session.cwd.split("/").filter(Boolean).at(-1) || session.cwd} onDraft={text => setDrafts(previous => ({ ...previous, [selectedId]: text }))} />
         </div>}
-        {session && (view === 'chat' ? <Transcript session={session} active={active} api={api} /> : <AgentDetailView key={`${session.id}:${view}`} session={session} view={view} data={viewData} api={api} onChat={() => changeView('chat')} />)}
+        {session && (view === 'chat' ? <Transcript session={session} active={active} api={api} /> : view !== 'models' && <AgentDetailView key={`${session.id}:${view}`} session={session} view={view} data={viewData} api={api} onChat={() => changeView('chat')} />)}
+        {session?.provider === 'omp' && modelsSessionId === session.id && <div hidden={view !== 'models'}><OmpModelsPage key={session.id} api={api} store={store} session={session} onConversation={() => changeView('chat')} /></div>}
         {session?.error && <TurnError><strong>{diagnose(session.error, provider).title}</strong><p>{diagnose(session.error, provider).action}</p><details><summary>Error details</summary>{errorText(session.error)}</details></TurnError>}
       </div>
       <div className="agent-chat-seat">
-        {actionError && <Notice error detail="Messages are not retried automatically. Your unsent text is preserved.">{actionError}</Notice>}
+        {actionError && <Notice error detail="Requests are not retried automatically. Your unsent text is preserved.">{actionError}</Notice>}
+        {commandResult?.id === selectedId && <Notice><span className="agent-chat-command-result">{commandResult.message}</span>{commandResult.file && <button type="button" onClick={() => downloadChatFile(commandResult.file)}>Download {commandResult.file.filename}</button>}</Notice>}
         {view !== 'tasks' && <TodoDock todos={todos} label={agentProfile(provider).taskLabel || 'To-dos'} />}
         {session?.pendingApprovals.map((approval) => <ApprovalCard key={approval.id} approval={approval} provider={provider}
           cwd={session.cwd} busy={!!busy} onDecide={approve} />)}
-        <Composer provider={provider} draft={draft} disabled={!session || closed} closed={closed} active={active} canSend={canSend}
-          configuration={session && runtime?.capabilities?.settings && <ChatSettings key={`${session.id}:${configRevision || 0}`} session={session} api={api} disabled={active || !!busy || closed} onConfigure={configure} saveStatus={settingsStatus} onOpenModels={onOpenOmpModels} />}
-          sending={busy === "Send message"} stopDisabled={!!busy || closed} unavailable={unavailable}
+        <Composer key={selectedId} provider={provider} draft={draft} disabled={!session} closed={closed} active={active} canSend={canSend} commands={commands}
+          configuration={session && runtime?.capabilities?.settings && <ChatSettings key={`${session.id}:${configRevision || 0}`} session={session} api={api} disabled={active || !!busy || closed} onConfigure={configure} saveStatus={settingsStatus} onOpenModels={() => changeView('models')} />}
+          sending={busy === "Send message" || busy === "Run command"} stopDisabled={!!busy || closed} unavailable={unavailable}
           onDraft={(value) => setDrafts((previous) => ({ ...previous, [selectedId]: value }))}
           onSend={send} onStop={() => endSession("chatInterrupt", selectedId)} />
       </div>

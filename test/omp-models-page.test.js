@@ -72,18 +72,12 @@ async function mount({ failSave = false } = {}) {
   });
   const calls = [],
     state = fixture(),
-    workspace = {
-      machines: [{ id: "local", name: "Local" }],
-      sessions: [
-        {
-          id: "s",
-          provider: "omp",
-          machineId: "local",
-          cwd: "/workspace",
-          name: "Test",
-        },
-      ],
-      selectedId: "s",
+    session = {
+      id: "s",
+      provider: "omp",
+      machineId: "local",
+      cwd: "/workspace",
+      name: "Test",
     };
   const api = async (method, payload) => {
     calls.push({ method, payload });
@@ -113,7 +107,9 @@ async function mount({ failSave = false } = {}) {
     root.render(
       React.createElement(Page, {
         api,
-        store: { subscribe: () => () => {}, getSnapshot: () => workspace },
+        store: { configurationChanged() {} },
+        session,
+        onConversation: () => {},
       }),
     ),
   );

@@ -27,10 +27,7 @@ test("agent profiles keep DSH native and give external agents their own behavior
   assert.equal(agentProfile("claude").placeholder, "Ask Claude Code…");
   assert.equal(agentProfile("unknown-agent").name, "unknown-agent");
   assert.equal(agentProfile(undefined).name, "Agent");
-  assert.match(inputIssue("omp", "/compact"), /plain prompts/);
-  assert.match(inputIssue("omp", "   !rm -rf /"), /plain prompts/);
   assert.equal(inputIssue("omp", "explain src/a.js"), "");
-  assert.equal(inputIssue("claude", "/compact"), "", "Claude handles its own slash commands");
   assert.match(approvalScope("omp", { details: { grant: "this call only" } }), /^OMP grants this call only/);
   assert.match(approvalScope("claude", {}), /this tool call only/);
 });

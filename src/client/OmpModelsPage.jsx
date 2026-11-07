@@ -2,7 +2,6 @@ import React, {
   useEffect,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
 import AgentLogo from "./AgentLogo.jsx";
 
@@ -107,12 +106,9 @@ function NumberField({ label, value, onChange, step = "1" }) {
   );
 }
 
-/** A dedicated configuration workspace. All forms stage changes until Save. */
-export default function OmpModelsPage({ api, store, onConversation }) {
-  const workspace = useSyncExternalStore(store.subscribe, store.getSnapshot);
-  const initial = workspace.sessions.find((s) => s.id === workspace.selectedId);
-  const [machineId, setMachine] = useState(initial?.machineId || "local"),
-    [cwd, setCwd] = useState(initial?.cwd || "");
+/** Session configuration editor. All forms stage changes until Save. */
+export default function OmpModelsPage({ api, store, session, onConversation }) {
+  const machineId = session.machineId || "local", cwd = session.cwd;
   const [data, setData] = useState(null),
     [tab, setTab] = useState("roles"),
     [scope, setScope] = useState("global");
@@ -166,7 +162,6 @@ export default function OmpModelsPage({ api, store, onConversation }) {
       const result = await api("ompConfigRead", { machineId, cwd });
       if (alive.current && token === generation.current) {
         setData(result);
-        setCwd(result.cwd);
         setRolePatch({});
         setCycleText(null);
         setProviderDraft({});
@@ -352,7 +347,7 @@ export default function OmpModelsPage({ api, store, onConversation }) {
   );
   const shown = filtered.slice(0, 80);
   return (
-    <main className="omp-models-page">
+    <section className="omp-models-page omp-models-session" aria-label="OMP model configuration">
       <header className="omp-models-heading">
         <div>
           <div className="omp-models-title">
@@ -361,23 +356,14 @@ export default function OmpModelsPage({ api, store, onConversation }) {
           </div>
           <p>Role assignments, provider connections and custom models</p>
         </div>
-        {onConversation && initial && (
-          <button onClick={onConversation}>Back to conversation</button>
+        {onConversation && (
+          <button disabled={dirty || busy} onClick={onConversation}>Back to conversation</button>
         )}
       </header>
       <div className="omp-models-context">
-        <Dropdown
-          label="Machine"
-          disabled={dirty || busy}
-          value={machineId}
-          blank={null}
-          options={(workspace.machines || [{ id: "local", name: "Local" }]).map(
-            (m) => ({ id: m.id, label: m.name || m.id }),
-          )}
-          onChange={(value) => {
-            if (!dirty && !busy) setMachine(value);
-          }}
-        />
+        <Field label="Machine">
+          <input aria-label="Machine" value={machineId} readOnly />
+        </Field>
         <Field
           label="Workspace directory"
           hint="Project overrides apply to this directory."
@@ -385,9 +371,7 @@ export default function OmpModelsPage({ api, store, onConversation }) {
           <input
             aria-label="Workspace directory"
             value={cwd}
-            disabled={dirty || busy}
-            placeholder="Home directory"
-            onChange={(e) => setCwd(e.target.value)}
+            readOnly
           />
         </Field>
         <button disabled={busy || dirty} onClick={load}>
@@ -653,9 +637,9 @@ export default function OmpModelsPage({ api, store, onConversation }) {
                       </button>
                     </div>
                   </section>
-                  {initial?.provider === "omp" && (
+                  {session?.provider === "omp" && (
                     <p className="omp-models-caption">
-                      Current conversation: {initial.name}. Its model and
+                      Current conversation: {session.name}. Its model and
                       thinking overrides are managed in the conversation
                       composer; they do not change these shared files.
                     </p>
@@ -1361,6 +1345,6 @@ export default function OmpModelsPage({ api, store, onConversation }) {
           </button>
         </div>
       )}
-    </main>
+    </section>
   );
 }

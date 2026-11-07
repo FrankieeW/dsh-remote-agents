@@ -205,7 +205,7 @@ impl ToolHistory {
             _ => return Ok((items.len(), None, None)),
         }
         let position = existing.unwrap_or(items.len() - 1);
-        let preview = if position < 16 {
+        let preview = if position >= items.len().saturating_sub(16) {
             Some(self.preview(sid, mid, tid, 4096)?)
         } else {
             None

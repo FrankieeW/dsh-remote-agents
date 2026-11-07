@@ -15,6 +15,8 @@ export const ENDPOINTS = [
   "chatList",
   "chatCreate",
   "chatGet",
+  "chatCommands",
+  "chatCommand",
   "chatSend",
   "chatInterrupt",
   "chatApprove",

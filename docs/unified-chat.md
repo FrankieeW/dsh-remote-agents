@@ -36,11 +36,35 @@ Version 0.4.1 accepts OMP phased `todo` input (`op: init`, `list[].items`) and f
 | Attachments, rich questions | Native | Not exposed | Not exposed | Not exposed |
 | SSH structured chat | Local Host only | Yes | Yes, compatible RPC v2 CLI | Yes, compatible app-server CLI |
 
-The existing machine/project import and SSH terminal tools remain under **Machines & projects**. Codex is available as both structured local chat and a legacy terminal. Unsupported questions are denied/cancelled visibly rather than answered with a guessed boolean. Unknown OMP URLs are not opened. OMP `/` and `!` shortcut commands are rejected to avoid implicit session/configuration changes.
+The existing machine/project import and SSH terminal tools remain under **Machines & projects**. Codex is available as both structured local chat and a legacy terminal. Unsupported questions are denied/cancelled visibly rather than answered with a guessed boolean. Unknown OMP URLs are not opened. The Rust development build exposes the conversation commands below; OMP `!` shell shortcuts remain unavailable in structured chat.
 
 ## Rust backend
 
 The development branch routes every backend operation to a bundled Rust process over bounded JSONL on stdio. DSH authentication and Fetch registration remain in the thin JavaScript host shim. Rust owns session/fleet storage, CLI discovery and configuration, SSH/tmux, provider event handling, approvals, imports, export/search and original OMP history. The Claude Node helper only invokes the official SDK and forwards its events and permission requests; decisions and normalization remain in Rust. No network listener or automatic JavaScript backend fallback is added. See [native architecture](../native/README.md).
+
+## Conversation commands (Rust development build)
+
+Type `/` in a Claude Code, Codex or OMP conversation to filter the command list. Up/Down changes the selection; Tab or clicking completes it. Enter completes a partial name or executes an exact command, Escape dismisses the list, and Shift+Enter inserts a newline. IME confirmation does not submit. Commands run in Rust and never enter the provider's prompt or conversation transcript.
+
+| Command | Behavior |
+|---|---|
+| `/help` | Show command usage and descriptions. |
+| `/status` | Show agent, machine, directory, lifecycle, settings, pin/archive state and retained-message count. |
+| `/model [selector\|default]` | List CLI model selectors, set a custom or catalog selector, or reset to the CLI default. |
+| `/effort [value\|default]` | List provider-specific thinking levels, set one, or follow the CLI default. |
+| `/permissions [mode]` | List or set the provider's permission mode; `cli` follows native configuration. |
+| `/rename <name>` | Set a manual conversation title, including spaces. |
+| `/pin [on\|off]` | Inspect or explicitly set pinned state. |
+| `/archive [on\|off]` | Inspect or explicitly set archive state. |
+| `/new` | Create and open a fresh conversation with the same agent, machine, directory and settings. Preserve the previous conversation. |
+| `/stop` | Interrupt the owned turn and expire its pending approvals. |
+| `/export [markdown\|json]` | Download retained conversation history; Markdown is the default. |
+
+Model, effort and permission changes reuse validated, revision-checked session settings and apply on the next turn. Only `/help`, `/status`, `/stop` and `/export` run during an active turn. Closed sessions allow `/help`, `/status`, `/export` and `/new`. Other commands require an idle open session. Unknown commands and invalid arguments fail visibly; native terminal commands such as `/compact` are not forwarded.
+
+Commands also work when the runtime is unavailable, except no-argument `/model`, which reads its CLI catalog. An explicit model selector works offline. The frontend keeps failed command text and its request ID for manual retry. `/new` persists its request receipt and fresh conversation together in one atomic write, so retrying after response loss or a backend restart returns the same conversation. Each source retains up to 128 fresh-conversation receipts; the existing total-session limit also applies. These internal receipts are excluded from snapshots and exports.
+
+Rust process integration tests cover all three providers, stale settings revisions, history preservation, approval interruption, offline closed-session operations and `/new` retries after restart. Component coverage checks keyboard/IME behavior, offline commands and late responses preserving selection and drafts. An isolated Chromium smoke run exercised the actual React workbench and Rust binary for completion, status, rename, custom models, fresh-session navigation, a fixture OMP turn, interruption and JSON download. That browser run used deterministic OMP protocol and DSH primitive fixtures, not a live model or the installed desktop shell.
 
 ## Protocols and lifecycle
 

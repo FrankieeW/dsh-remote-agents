@@ -1,10 +1,10 @@
-# OMP model configuration (0.5.0-alpha.4)
+# OMP model configuration (0.5.0-alpha.5)
 
-Open **OMP models** in the DSH sidebar, or **Manage OMP roles and providers…** from an OMP conversation's model settings. Configuration management is validated against OMP **18.18.x**; the older conversation compatibility range is unchanged.
+Open the **Models** tab in an OMP conversation, or **Manage OMP roles and providers…** from its model settings. The editor is scoped to that conversation's machine and workspace. Configuration management is validated against OMP **18.18.x**; the older conversation compatibility range is unchanged.
 
 ## Model roles
 
-The page includes all 16 built-in roles and configured custom roles. Choose the machine and workspace, then edit **OMP global defaults** or **This project overrides**. Role selectors accept catalog models or OMP role aliases. The currently effective value comes from OMP's configuration CLI and is shown separately from the layer being edited. Direct alias cycles are rejected.
+The editor includes all 16 built-in roles and configured custom roles. Edit **OMP global defaults** or **This project overrides** for the conversation's workspace. Role selectors accept catalog models or OMP role aliases. The currently effective value comes from OMP's configuration CLI and is shown separately from the layer being edited. Direct alias cycles are rejected.
 
 Global settings belong to the machine's active OMP profile, as reported by `omp config path`. Project edits target `<workspace>/.omp/config.yml`; missing assignments inherit global defaults. Existing environment, vendor-project or extra-config overlays may still take precedence. Default thinking, role cycle order and named model presets are editable. Preset application stages a draft; **Save role configuration** commits it.
 
@@ -14,9 +14,9 @@ Current-conversation model/thinking overrides remain in the conversation compose
 
 Provider connections use the active profile's `models.yml` (or existing `models.yaml`). Manage endpoints, API protocols, authentication mode and model discovery. Configure custom models or add overrides for models selected from the catalog. The model form exposes input types, reasoning/tool support, context/output limits, thinking controls and prices.
 
-The catalog includes all model kinds and supports provider, kind and text filters. It is read using `models --kind all --json --no-extensions`; extension discovery is intentionally disabled. Catalog discovery may contact configured model-list endpoints, but this page sends no model prompt and does not run a model/credit test on save. If catalog resolution fails, parseable existing configuration remains editable.
+The catalog includes all model kinds and supports provider, kind and text filters. It is read using `models --kind all --json --no-extensions`; extension discovery is intentionally disabled. Catalog discovery may contact configured model-list endpoints, but this editor sends no model prompt and does not run a model/credit test on save. If catalog resolution fails, parseable existing configuration remains editable.
 
-Existing credentials are never returned to the browser. Choose **Keep unchanged**, set an environment variable reference, enter a new write-only key or explicitly remove the key. An existing bare credential is masked even if it looks like an environment variable name: it may actually be a literal key. Environment references must be set where OMP runs. OAuth sign-in and account storage remain managed by OMP; this page does not import, export or edit OAuth tokens. Shell-command credentials can be preserved but cannot be newly entered here. Existing private endpoint components are hidden and preserved until the endpoint is explicitly replaced.
+Existing credentials are never returned to the browser. Choose **Keep unchanged**, set an environment variable reference, enter a new write-only key or explicitly remove the key. An existing bare credential is masked even if it looks like an environment variable name: it may actually be a literal key. Environment references must be set where OMP runs. OAuth sign-in and account storage remain managed by OMP; this editor does not import, export or edit OAuth tokens. Shell-command credentials can be preserved but cannot be newly entered here. Existing private endpoint components are hidden and preserved until the endpoint is explicitly replaced.
 
 ## Saving and preservation
 

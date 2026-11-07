@@ -46,7 +46,7 @@ const PROFILES = Object.freeze({
     fullName: "OMP (oh-my-pi)",
     placeholder: "Ask OMP…",
     welcome: "Follow phased tasks and inspect tools in your local or SSH workspace.",
-    views: [{ id: "chat", label: "Chat" }, { id: "tasks", label: "Tasks" }, { id: "tools", label: "Tools" }],
+    views: [{ id: "chat", label: "Chat" }, { id: "tasks", label: "Tasks" }, { id: "tools", label: "Tools" }, { id: "models", label: "Models" }],
     taskLabel: "Tasks",
     permissionLabel: "OMP tool approval policy",
     effortLabel: "Thinking level",
@@ -88,14 +88,11 @@ export function resumeCommand(session, machine) {
   return `ssh -t${machine.user ? ` -l ${shellQuote(machine.user)}` : ""}${machine.port ? ` -p ${machine.port}` : ""} -- ${shellQuote(machine.host)} ${shellQuote(command)}`;
 }
 
-/**
- * OMP only: its RPC adapter refuses `/` commands and `!` shell shortcuts, which
- * would otherwise be accepted and then fail. Explain before sending instead.
- */
+/** OMP's shell shortcut belongs to its terminal interface. */
 export function inputIssue(provider, text) {
   if (provider !== "omp") return "";
-  return /^[/!]/.test(String(text ?? "").trimStart())
-    ? "OMP chat only sends plain prompts. / commands and ! shell shortcuts are not run here."
+  return /^!/.test(String(text ?? "").trimStart())
+    ? "OMP ! shell shortcuts are not run here. Ask OMP to run a shell command in a plain prompt."
     : "";
 }
 

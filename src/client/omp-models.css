@@ -6,6 +6,11 @@
   color: var(--dsw-alias-label-primary);
   font: 14px/1.5 var(--dsw-font-family, system-ui);
 }
+.omp-models-page.omp-models-session {
+  height: auto;
+  overflow: visible;
+  padding: 0;
+}
 .omp-models-page * {
   box-sizing: border-box;
 }

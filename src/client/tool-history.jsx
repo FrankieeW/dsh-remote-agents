@@ -62,7 +62,7 @@ export function ToolHistory({ api, session, message, renderTool, preview = true 
   return <section className="agent-tool-history" aria-label="Saved tool history">
     {preview && !opened && <div className="agent-chat-tools">{message.tools.map(tool => <React.Fragment key={tool.id}>{renderTool(tool)}</React.Fragment>)}</div>}
     {message.toolHistoryError ? <p role="alert">{message.toolHistoryError}</p> : <p className="agent-chat-caption">
-      {preview && !opened ? `Showing ${message.tools.length} of ${total} tool calls` : `${total} saved tool calls`} · {active ? 'Saving full records as they arrive' : message.archiveSource === 'omp-original' ? 'Recovered original snapshot' : 'Complete tool records saved'}
+      {preview && !opened ? `Showing latest ${message.tools.length} of ${total} tool calls` : `${total} saved tool calls`} · {active ? 'Saving full records as they arrive' : message.archiveSource === 'omp-original' ? 'Recovered original snapshot' : 'Complete tool records saved'}
     </p>}
     <div className="agent-history-actions">
       <button type="button" disabled={busy} onClick={() => opened ? setOpened(false) : load()}>{opened ? 'Hide saved tools' : 'Browse saved tools'}</button>

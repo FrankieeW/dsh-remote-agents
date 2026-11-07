@@ -395,3 +395,11 @@
 .agent-tool-filters [aria-pressed="true"] { color: var(--dsw-alias-label-primary); border-color: var(--dsw-alias-label-caption); }
 .agent-text-action { border: 0; background: transparent; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; }
 @media (max-width: 640px) { .agent-view-tabs { padding-inline: 12px; } .agent-welcome-suggestions { flex-direction: column; align-items: stretch; } }
+
+.agent-chat-composer-card { position: relative; }
+.agent-chat-command-menu { position: absolute; bottom: calc(100% + 8px); inset-inline: 0; z-index: 21; margin: 0; padding: 6px; list-style: none; max-height: min(360px, 45vh); overflow-y: auto; border-radius: var(--dsw-radius-lg); background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-2)); box-shadow: var(--dsw-elevation-panel); color: var(--dsw-alias-label-primary); }
+.agent-chat-command-menu button { display: flex; flex-direction: column; gap: 3px; width: 100%; padding: 8px 10px; border: 0; border-radius: var(--dsw-radius-md); background: transparent; color: inherit; text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
+.agent-chat-command-menu [aria-selected="true"] button, .agent-chat-command-menu button:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.agent-chat-command-menu span { color: var(--dsw-alias-label-secondary); }
+.agent-chat-command-menu small { color: var(--dsw-alias-label-tertiary); }
+.agent-chat-command-result { white-space: pre-wrap; overflow-wrap: anywhere; }
