@@ -4,7 +4,7 @@ Unified DSH workspaces for **Claude Code, Codex and OMP**, with local and SSH co
 
 Unofficial community plugin, independently developed and maintained; not affiliated with DeepSeek. User messages and provider output are never translated or rewritten.
 
-> **Stable channel: 0.4.1.** Supports DSH 0.2.2-rc.1 and the CLI compatibility ranges below. Restart the desktop application after upgrading so its host and interface use the same plugin version.
+> **Legacy JavaScript implementation (frozen).** This branch preserves the final JavaScript-backed version, published as npm `dsh-remote-agents@0.4.1` (tag `v0.4.1`). It receives no new features, fixes or CLI compatibility updates. The Rust implementation continues on [`main`](https://github.com/FrankieeW/dsh-remote-agents).
 
 ## Screenshots
 
@@ -21,10 +21,10 @@ Captured from the actual **0.4.1** interface in an isolated demonstration profil
 
 ## Install
 
-Use `dsh-remote-agents@latest` in the plugin manager for your running DSH profile, or pin `dsh-remote-agents@0.4.1`. For an explicitly selected `web` profile:
+Use `dsh-remote-agents@0.4.1` in the plugin manager for your running DSH profile. For an explicitly selected `web` profile:
 
 ```sh
-dsh plugin --profile web add dsh-remote-agents@latest
+dsh plugin --profile web add dsh-remote-agents@0.4.1
 ```
 
 For the desktop app, install into its existing profile through its plugin manager; the command above does not update the desktop profile.
