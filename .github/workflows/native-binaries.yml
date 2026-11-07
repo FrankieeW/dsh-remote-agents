@@ -81,3 +81,38 @@ jobs:
           name: npm-package-all-platforms
           path: '*.tgz'
           if-no-files-found: error
+  publish:
+    needs: package
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Install npm with trusted publishing support
+        run: npm install --global npm@11
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-package-all-platforms
+          path: npm-package
+      - name: Publish verified archive to npm
+        shell: bash
+        run: |
+          archives=(./npm-package/*.tgz)
+          if [ "${#archives[@]}" -ne 1 ] || [ ! -f "${archives[0]}" ]; then
+            echo "Expected exactly one verified npm archive" >&2
+            exit 1
+          fi
+          archive="${archives[0]}"
+          tar -xOf "$archive" package/package.json > npm-package/package.json
+          version="$(node -p "require('./npm-package/package.json').version")"
+          dist_tag="$(node -p "require('./npm-package/package.json').publishConfig?.tag || 'latest'")"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "Release tag $GITHUB_REF_NAME does not match package version $version" >&2
+            exit 1
+          fi
+          npm publish "$archive" --access public --tag "$dist_tag" --ignore-scripts

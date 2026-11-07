@@ -36,7 +36,19 @@ The `Native distribution` workflow builds and tests:
 - macOS arm64 and x64 (deployment target macOS 11).
 - Linux arm64 and x64 using musl targets, without a runtime glibc dependency.
 
-Each artifact contains `<platform>-<arch>/backend`. The assembly job merges all four into `lib/native/`, restores executable permissions, packages with `npm pack --ignore-scripts`, and runs the installed-package test on that exact archive. It uploads the archive but does **not** publish npm packages or create releases.
+Each artifact contains `<platform>-<arch>/backend`. The assembly job merges all four into `lib/native/`, restores executable permissions, packages with `npm pack --ignore-scripts`, and runs the installed-package test on that exact archive. Branch pushes and manual runs upload the archive for download. A `v<version>` tag push also publishes that verified archive to npm after checking that the tag matches the version inside the archive. The alpha package uses the `next` dist-tag from `publishConfig.tag`.
+
+Configure a GitHub Actions trusted publisher in the npm settings for `dsh-remote-agents` using these values.
+
+| Field | Value |
+| --- | --- |
+| Organization or user | `FrankieeW` |
+| Repository | `dsh-remote-agents` |
+| Workflow filename | `native-binaries.yml` |
+| Environment name | Leave empty |
+| Allowed actions | Enable `npm publish` |
+
+The publish job uses a GitHub-hosted runner, Node.js 24, npm 11 and `id-token: write` for OIDC authentication. npm requires the first successful publish within two days of adding a trusted publisher. [npm trusted publishing documentation](https://docs.npmjs.com/trusted-publishers/)
 
 For a manual assembly after downloading the workflow artifacts:
 
