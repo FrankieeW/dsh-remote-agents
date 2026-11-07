@@ -2,7 +2,7 @@ name: Native distribution
 on:
   workflow_dispatch:
   push:
-    branches: [feat/rust-backend]
+    branches: [main]
     tags: ['v*']
 permissions:
   contents: read
