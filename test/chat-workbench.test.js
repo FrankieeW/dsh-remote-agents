@@ -393,7 +393,7 @@ test('OMP truncation identifies the retained tool limit and loads original pages
     throw Error(method);
   });
   try{
-    await h.select('history');assert.match(document.body.textContent,/Only the first 1 tool calls/);assert.equal(calls.length,0);assert.ok(!document.body.textContent.includes('Some content in this message was truncated'));
+    await h.select('history');assert.match(document.body.textContent,/older plugin preview contains only 1 tool calls/);assert.equal(calls.length,0);assert.ok(!document.body.textContent.includes('Some content in this message was truncated'));
     await h.click('View original OMP turn');assert.match(document.body.textContent,/Showing 1 of 2/);
     await h.click('Load more original tool calls');assert.match(document.body.textContent,/Showing 2 of 2/);assert.equal(calls.at(-1).offset,1);
     await h.click('Read larger record for read');assert.match(document.body.textContent,/Complete tool result/);
@@ -414,6 +414,28 @@ for(const provider of ['claude','codex','omp'])test(`${provider} native view tab
   await h.tick(5000);assert.equal(document.querySelector('[role="tab"][aria-selected="true"]').getAttribute('aria-label'),expected[2]);
   await h.select('');await h.select('views');assert.equal(document.querySelector('[role="tab"][aria-selected="true"]').getAttribute('aria-label'),'Chat');assert.equal(document.querySelector('textarea').value,draft);
  }finally{await h.cleanup();}
+});
+
+test('archived tool pages replace rows and preserve the composer while full data is paged',async()=>{
+  const tools=Array.from({length:40},(_,i)=>({id:`t-${i}`,name:'read',input:{path:`file-${i}`},status:'done',archived:true,truncated:true}));
+  const state={...fixture('archive'),provider:'omp',messages:[{id:'m',role:'assistant',text:'Done',tools:tools.slice(0,16),toolsArchived:true,toolCount:40}]};
+  const calls=[];
+  const h=await mount(async(method,payload)=>{
+    if(method==='chatList')return{sessions:[state],providers:[{id:'omp',available:true}]};
+    if(method==='chatGet')return structuredClone(state);
+    if(method==='chatToolHistory'){
+      calls.push(payload);
+      if(payload.toolId)return{toolId:payload.toolId,field:payload.field,offset:payload.offset||0,nextOffset:payload.offset?12:6,size:12,hasMore:!payload.offset,text:payload.offset?'TAIL_OK':'FIRST_'};
+      const offset=payload.offset||0;return{tools:tools.slice(offset,offset+16),offset,totalTools:40,matchedTools:40,nextOffset:Math.min(40,offset+16),hasMore:offset+16<40};
+    }
+    throw Error(method);
+  });
+  try{
+    await h.select('archive');assert.match(document.body.textContent,/Showing 16 of 40 tool calls/);assert.ok(!document.body.textContent.includes('Only the first'));const composer=document.querySelector('textarea');
+    await h.click('Browse saved tools');await h.click('Next tools');assert.equal(calls.at(-1).offset,16);assert.match(document.body.textContent,/file-31/);assert.ok(!document.body.textContent.includes('file-0'));
+    assert.equal(document.querySelectorAll('[data-disclosure-row]').length,16);assert.equal(document.querySelector('textarea'),composer);
+    await h.click('Read full result for read');assert.match(document.querySelector('.agent-history-detail').textContent,/FIRST_/);await h.click('Next data');assert.match(document.querySelector('.agent-history-detail').textContent,/TAIL_OK/);assert.ok(!document.querySelector('.agent-history-detail').textContent.includes('FIRST_'));
+  }finally{await h.cleanup();}
 });
 
 test('Codex changes/plan views and OMP phased tasks render retained data while keeping approvals visible',async()=>{

@@ -190,7 +190,7 @@ export default function ChatWorkbench({ api, store }) {
           <h2>What would you like to work on?</h2>
           <AgentWelcome provider={provider} workspace={session.cwd.split("/").filter(Boolean).at(-1) || session.cwd} onDraft={text => setDrafts(previous => ({ ...previous, [selectedId]: text }))} />
         </div>}
-        {session && (view === 'chat' ? <Transcript session={session} active={active} api={api} /> : <AgentDetailView key={`${session.id}:${view}`} session={session} view={view} data={viewData} onChat={() => changeView('chat')} />)}
+        {session && (view === 'chat' ? <Transcript session={session} active={active} api={api} /> : <AgentDetailView key={`${session.id}:${view}`} session={session} view={view} data={viewData} api={api} onChat={() => changeView('chat')} />)}
         {session?.error && <TurnError><strong>{diagnose(session.error, provider).title}</strong><p>{diagnose(session.error, provider).action}</p><details><summary>Error details</summary>{errorText(session.error)}</details></TurnError>}
       </div>
       <div className="agent-chat-seat">

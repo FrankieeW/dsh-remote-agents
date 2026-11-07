@@ -147,6 +147,28 @@ impl Engine {
                     .unwrap_or("markdown"),
             ),
             "chatOmpHistory" => self.chat().await?.lock().await.history(&p),
+            "chatToolHistory" => {
+                let (reader, sid, mid, active, minimum) =
+                    self.chat().await?.lock().await.tool_history_reader(&p)?;
+                tokio::task::spawn_blocking(move || {
+                    let mut p = p;
+                    p["minimumCount"] = json!(minimum);
+                    let mut value = reader.read(&sid, &mid, &p)?;
+                    if !active {
+                        if let Some(tools) = value["tools"].as_array_mut() {
+                            for tool in tools {
+                                if tool["status"] == "running" {
+                                    tool["status"] = json!("interrupted");
+                                }
+                            }
+                        }
+                    }
+                    Ok(value)
+                })
+                .await
+                .map_err(|_| Error::new("IO_ERROR", "Tool history read failed"))?
+            }
+            "chatRecoverOmpTools" => self.chat().await?.lock().await.recover_tools(&p),
             "chatApprove" => self.chat().await?.lock().await.approve(&p),
             "chatOptions" => {
                 let session = self.chat().await?.lock().await.session(s(&p, "id"))?;

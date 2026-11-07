@@ -85,6 +85,16 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     promptId = f.id;
     reply({});
     if (f.message === "WAIT") return;
+    if (f.message === "MANY_TOOLS") {
+      for (let i = 0; i < 40; i++) {
+        const toolCallId = `many-${i}`;
+        output({type:'tool_execution_start',toolCallId,toolName:i===39?'todo':'read',args:{path:`file-${i}`}});
+        output({type:'tool_execution_update',toolCallId,partialResult:{content:[{type:'text',text:'stream-start'}]}});
+        output({type:'tool_execution_update',toolCallId,partialResult:{content:[{type:'text',text:'stream-start\nstream-end'}]}});
+        output({type:'tool_execution_end',toolCallId,result:i===39?{details:{phases:[{name:'Final',tasks:[{content:'Fortieth tool kept',status:'completed'}]}]}}:{content:[{type:'text',text:'中文🙂'.repeat(i===38?30000:2000)+`END_MARKER_${i}`}]}});
+      }
+      complete('FORTY_TOOLS_OK');return;
+    }
     if (f.message === "APPROVAL") {
       output({
         type: "extension_ui_request",

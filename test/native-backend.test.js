@@ -9,6 +9,7 @@ import {
   stat,
   access,
   rm,
+  symlink,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -358,6 +359,58 @@ test("Rust OMP history indexes more than 16 tools and never returns provider cre
     toolId: "tool-0",
   });
   assert.equal(tool.tool.result.content[0].text.length, 10000);
+  const recovered = await f.call('chatRecoverOmpTools',{id:sid,messageId});
+  assert.equal(recovered.messages[0].toolCount,21);
+  assert.equal(recovered.messages[0].toolsArchived,true);
+  const full = await f.call('chatToolHistory',{id:sid,messageId,toolId:'tool-20',field:'result'});
+  assert.equal(JSON.parse(full.text).content[0].text.length,10000);
+  assert.ok(!full.text.includes('PRIVATE'));
+  await assert.rejects(f.call('chatRecoverOmpTools',{id:sid,messageId}),{code:'CONFLICT'});
+});
+
+test('full tool archives retain later calls, Unicode output, search, streams and restart',async t=>{
+  const f=await fixture(t), session=await f.call('chatCreate',{provider:'omp',cwd:f.root});
+  const admitted=await f.call('chatSend',{id:session.id,text:'MANY_TOOLS',requestId:'many'});
+  const state=await settled(f,session.id), message=state.messages.at(-1);
+  assert.equal(message.toolCount,40);assert.equal(message.tools.length,16);assert.equal(message.toolsTruncated,undefined);
+  assert.equal(message.latestTodoTool.result.details.phases[0].tasks[0].content,'Fortieth tool kept');
+  const p={id:session.id,messageId:admitted.assistantMessageId};
+  const ids=[];let offset=0;
+  for(;;){const page=await f.call('chatToolHistory',{...p,offset});ids.push(...page.tools.map(t=>t.id));if(!page.hasMore)break;offset=page.nextOffset;}
+  assert.equal(new Set(ids).size,40);assert.equal(ids.at(-1),'many-39');
+  const found=await f.call('chatToolHistory',{...p,query:'END_MARKER_38'});assert.equal(found.matchedTools,1);assert.equal(found.tools[0].id,'many-38');
+  let raw='',position=0;
+  for(;;){const chunk=await f.call('chatToolHistory',{...p,toolId:'many-38',field:'result',offset:position,limit:65533});assert.ok(Buffer.byteLength(chunk.text)<=65533);raw+=chunk.text;if(!chunk.hasMore)break;assert.ok(chunk.nextOffset>position);position=chunk.nextOffset;}
+  assert.equal(JSON.parse(raw).content[0].text,'中文🙂'.repeat(30000)+'END_MARKER_38');
+  const stream=await f.call('chatToolHistory',{...p,toolId:'many-38',field:'text'});assert.equal(stream.text,'stream-start\nstream-end');
+  const other=await f.call('chatCreate',{provider:'codex',cwd:f.root});
+  await assert.rejects(f.call('chatToolHistory',{...p,id:other.id}),{code:'NOT_FOUND'});
+  await assert.rejects(f.call('chatToolHistory',{...p,toolId:'../../bad',field:'result'}),{code:'NOT_FOUND'});
+  await assert.rejects(f.call('chatToolHistory',{...p,toolId:'many-38',field:'../meta.json'}),{code:'INVALID_INPUT'});
+  await f.restart();
+  assert.equal((await f.call('chatGet',{id:session.id})).messages.at(-1).toolCount,40);
+  assert.equal((await f.call('chatToolHistory',{...p,offset:32})).tools.length,8);
+  // Archived SSH-session reads are host-owned and need no live machine connection.
+  await f.backend.close();
+  const savedPath=join(f.root,'state','conversations.json'), saved=JSON.parse(await readFile(savedPath,'utf8'));
+  saved.sessions.find(s=>s.id===session.id).machineId='offline-ssh';
+  await writeFile(savedPath,JSON.stringify(saved));await f.restart();
+  assert.equal((await f.call('chatToolHistory',{...p,offset:32})).tools.length,8);
+  const archiveDir=join(f.root,'state','tool-history',session.id,p.messageId);
+  assert.equal((await stat(archiveDir)).mode & 0o777,0o700);
+  assert.equal((await stat(join(archiveDir,'index.json'))).mode & 0o777,0o600);
+  await rm(join(archiveDir,'index.json'));
+  await assert.rejects(f.call('chatToolHistory',{...p,minimumCount:0}),{code:'HISTORY_UNAVAILABLE'});
+});
+
+test('archive storage failure stops a turn and is visible instead of silently losing tools',async t=>{
+  const f=await fixture(t), session=await f.call('chatCreate',{provider:'omp',cwd:f.root});
+  await mkdir(join(f.root,'outside'));
+  await symlink(join(f.root,'outside'),join(f.root,'state','tool-history'));
+  await f.call('chatSend',{id:session.id,text:'hello',requestId:'bad-store'});
+  const state=await settled(f,session.id,'error');
+  assert.match(state.messages.at(-1).toolHistoryError,/Could not save complete tool history/);
+  await assert.rejects(access(join(f.root,'outside',session.id)));
 });
 
 test("Rust CLI options retain provider catalogs and managed Codex restrictions", async (t) => {

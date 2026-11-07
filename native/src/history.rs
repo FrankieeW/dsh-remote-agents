@@ -40,6 +40,22 @@ fn bounded(v: &Value, max: usize) -> Value {
     }
 }
 pub fn original(root: &Path, session: &Value, p: &Value) -> Result<Value> {
+    read_original(root, session, p, None)
+}
+pub fn recover(
+    root: &Path,
+    session: &Value,
+    p: &Value,
+    archive: &mut crate::tool_history::ToolHistory,
+) -> Result<Value> {
+    read_original(root, session, p, Some(archive))
+}
+fn read_original(
+    root: &Path,
+    session: &Value,
+    p: &Value,
+    mut archive: Option<&mut crate::tool_history::ToolHistory>,
+) -> Result<Value> {
     if session["provider"] != "omp"
         || session
             .get("machineId")
@@ -262,7 +278,9 @@ pub fn original(root: &Path, session: &Value, p: &Value) -> Result<Value> {
     }
     let tool_id = p.get("toolId").and_then(Value::as_str);
     let indices =
-        if let Some(id) = tool_id {
+        if archive.is_some() {
+            (0..calls.len()).collect()
+        } else if let Some(id) = tool_id {
             vec![*lookup.get(id).ok_or_else(|| {
                 Error::new("HISTORY_UNAVAILABLE", "Tool is not part of this turn")
             })?]
@@ -283,9 +301,33 @@ pub fn original(root: &Path, session: &Value, p: &Value) -> Result<Value> {
             failed = m["isError"] == true;
             output = json!({"content":m["content"].as_array().into_iter().flatten().filter(|b|b["type"]=="text"&&b["text"].is_string()).map(|b|json!({"type":"text","text":b["text"]})).collect::<Vec<_>>(),"details":m["details"]})
         }
+        if let Some(store) = archive.as_deref_mut() {
+            if let Some(e) = result {
+                let row = at(&mut reader, e)?;
+                output = json!({"content":row["message"]["content"],"details":row["message"]["details"]});
+            }
+            store.record(
+                sid,
+                message_id,
+                "tool.start",
+                &json!({"id":id,"name":name,"input":input}),
+            )?;
+            if result.is_some() {
+                store.record(
+                    sid,
+                    message_id,
+                    "tool.end",
+                    &json!({"id":id,"result":output,"isError":failed}),
+                )?;
+            }
+            continue;
+        }
         let bounded_input = bounded(&input, bound);
         let bounded_result = bounded(&output, bound);
         tools.push(json!({"id":id,"name":name,"input":bounded_input,"result":bounded_result,"text":"","status":if result.is_none(){"running"}else if failed{"error"}else{"done"},"isError":failed,"truncated":false,"previewTruncated":bounded_input!=input||bounded_result!=output}));
+    }
+    if archive.is_some() {
+        return Ok(json!({"totalTools":calls.len(),"source":"omp-original"}));
     }
     if tool_id.is_some() {
         return Ok(json!({"tool":tools[0],"detailLimit":bound}));

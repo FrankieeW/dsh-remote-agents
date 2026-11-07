@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { TodoList } from "./chat-todos.jsx";
+import { ToolHistory } from "./tool-history.jsx";
 import { DIFF_LABELS, MARKDOWN_LABELS, TERMINAL_LABELS } from "./native-labels.js";
 import { describeTool, printable, toolTitle, unifiedHunks } from "./tool-presentation.js";
 import {
@@ -73,13 +74,14 @@ function ToolRow({ tool, cwd, defaultOpen = false }) {
     {view.summary && <><span className="agent-chat-tool-sep" aria-hidden="true" />
       <span className={`agent-chat-tool-summary${failed ? " is-error" : ""}`}><TextShimmer active={running}>{view.summary}</TextShimmer></span></>}
     {failed && <span className="agent-chat-tool-flag">Failed</span>}
+    {tool.status === 'interrupted' && <span className="agent-chat-caption">No completion recorded</span>}
   </>;
   return <DisclosureRow className={`agent-chat-tool agent-tool-kind-${view.kind} agent-tool-status-${failed ? 'error' : running ? 'running' : 'idle'}`} rowClassName="agent-chat-tool-row" titleClassName="agent-chat-tool-title"
     icon={<span className="agent-chat-tool-icon"><Icon size={14} /></span>} title={view.title} running={running} open={open && expandable} expandable={expandable}
     expandOnRowClick keepContentWhenOpen onToggle={() => setOpen((value) => !value)} collapsedContent={summary}>
     <div className="agent-chat-tool-body">
       <ToolBody view={view} running={running} failed={failed} cwd={cwd} />
-      {tool.truncated && <p className="agent-chat-caption">Tool data was truncated to fit the stored transcript.</p>}
+      {tool.truncated && <p className="agent-chat-caption">{tool.archived ? 'Preview shortened. Browse saved tools to read or export the complete record.' : 'Tool data was truncated in this older transcript.'}</p>}
     </div>
   </DisclosureRow>;
 }
@@ -119,6 +121,13 @@ function OriginalOmpTurn({ api, session, message }) {
   }
   if ((session.machineId || 'local') !== 'local') return <p className="agent-chat-caption">For the complete remote record, inspect this session using OMP on its SSH host.</p>;
   return <section className="agent-original-history" aria-label="Original OMP history">
+    {!message.toolsArchived && <button type="button" disabled={busy || ['running','waiting'].includes(session.status)} onClick={async () => {
+      if (locked.current) return;
+      locked.current = true; setBusy(true); setError('');
+      try { await api('chatRecoverOmpTools', { id: session.id, messageId: message.id }); }
+      catch (cause) { setError(cause.message || 'Original tools could not be recovered'); setOpened(true); }
+      finally { locked.current = false; setBusy(false); }
+    }}>Recover full tools from OMP</button>}
     <button type="button" disabled={busy} onClick={() => opened ? setOpened(false) : load()}>{busy ? 'Reading OMP history…' : opened ? 'Hide original OMP history' : 'View original OMP turn'}</button>
     {opened && <>
       <p className="agent-chat-caption">Read-only snapshot of this session's saved OMP history. Refresh to see later changes; this does not send a message or start an agent.</p>
@@ -146,13 +155,15 @@ function AssistantMessage({ message, cwd, streaming, session, api }) {
   const tools = message.tools || [];
   if (!tools.length && !message.text && !streaming) return null;
   return <article className="agent-chat-assistant" aria-label="Assistant message">
-    {tools.length > 0 && <div className="agent-chat-tools">{tools.map((tool) => <ToolRenderBoundary key={tool.id} tool={tool}><ToolRow tool={tool} cwd={cwd} /></ToolRenderBoundary>)}</div>}
+    {message.toolsArchived && api && (tools.length > 0 || message.toolHistoryError)
+      ? <ToolHistory key={message.id} api={api} session={session} message={message} renderTool={tool => <ToolCard tool={tool} cwd={cwd} />} />
+      : tools.length > 0 && <div className="agent-chat-tools">{tools.map((tool) => <ToolRenderBoundary key={tool.id} tool={tool}><ToolRow tool={tool} cwd={cwd} /></ToolRenderBoundary>)}</div>}
     {message.text
       ? <div className="agent-chat-markdown"><MarkdownText text={message.text} streaming={streaming} labels={MARKDOWN_LABELS} /></div>
       : streaming && <TextShimmer active className="agent-chat-working">Working…</TextShimmer>}
     {message.textTruncated && <p className="agent-chat-caption">Reply text exceeded the retained-message limit and was shortened.</p>}
-    {message.toolsTruncated && <p className="agent-chat-caption">Only the first {tools.length} tool calls were retained in this plugin message.</p>}
-    {session.provider === 'omp' && api && (message.textTruncated || message.toolsTruncated || tools.some(tool => tool.truncated)) && <OriginalOmpTurn key={message.id} api={api} session={session} message={message} />}
+    {!message.toolsArchived && message.toolsTruncated && <p className="agent-chat-caption">This older plugin preview contains only {tools.length} tool calls. Try the original history below for omitted records.</p>}
+    {session.provider === 'omp' && api && (message.toolHistoryError || message.textTruncated || !message.toolsArchived && (message.toolsTruncated || tools.some(tool => tool.truncated))) && <OriginalOmpTurn key={message.id} api={api} session={session} message={message} />}
   </article>;
 }
 

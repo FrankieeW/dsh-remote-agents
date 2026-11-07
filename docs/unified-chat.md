@@ -16,7 +16,7 @@ The interface defaults to **English** and uses DSH's semantic light/dark theme, 
 
 ## Retained previews and original OMP history
 
-The plugin record retains the first 16 tool calls per assistant turn and bounds tool values to 4,096 characters. A tool-count notice does not imply that the assistant reply text was shortened; text truncation is reported separately.
+Starting in development version 0.5.0-alpha.3, new turns save complete tool records separately from the UI snapshot. The snapshot shows the first 16 calls with bounded previews; later calls and full values remain available through paged history, full-record search and JSONL export. Older turns may still have only truncated previews. See [complete tool history](tool-history.md). Assistant text retention is separate and remains unchanged.
 
 For local OMP sessions, **View original OMP turn** reads the CLI-owned JSONL history on demand, matches the session identity, working directory and ordered prompt hashes, and pages the original tool calls. Individual records can be expanded to 256 Ki characters per value; larger records remain in the unchanged original file. This is a read-only snapshot with an explicit refresh, not a model request. Native files larger than 256 MiB, missing history, ambiguous identities and mismatched branches return a visible error without guessing or changing the conversation. Remote OMP history lookup is not exposed by this reader. The normal conversation export contains the retained plugin preview and labels omitted content.
 
@@ -62,7 +62,7 @@ Next to the fleet state file:
 - `conversations.json` stores bounded external conversation records, messages/tool output, request receipts and owned native IDs. Atomic replacement uses mode 0600; directories are initially 0700. One live ChatManager owns this file: **do not point simultaneous DSH profiles at the same chat state directory**.
 - `omp-sessions/<app-session-id>/` isolates native OMP session storage. Resume checks its returned identity/path rather than taking arbitrary client-supplied session paths.
 - Claude and Codex also use its normal native persistence. Authentication stays with the installed CLI; the plugin does not read credential files or copy credentials into its state.
-- Conversation text, tool inputs and results may contain sensitive project data. The stored transcript is bounded (256 sessions, 200 messages/session, 16 tool cards/message, 64 Ki characters/message, 4 Ki characters/tool value, 64 MiB total). Truncation is displayed; native continuation is not reconstructed from truncated UI history.
+- Conversation text, tool inputs and results may contain sensitive project data. The preview transcript is bounded (256 sessions, 200 messages/session, 16 tool cards/message, 64 Ki characters/message, about 4 KiB/tool field, 64 MiB total). New full tool archives live separately and are not pruned with the preview. Native continuation is not reconstructed from UI previews.
 - Closing the browser does not stop the Host's owned runtimes. Closing a session or unloading the plugin denies pending approvals and stops the corresponding structured subprocesses. This differs from legacy tmux sessions, which intentionally survive plugin unload.
 
 ## Implementation references

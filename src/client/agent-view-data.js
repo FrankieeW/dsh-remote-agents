@@ -29,10 +29,11 @@ export function agentViewData(session) {
   const todos = latestTodos(messages) || [];
   return {
     records,
+    totalTools: messages.reduce((n,m) => n + (m.toolCount ?? m.tools?.length ?? 0), 0),
     changes,
     todos,
     limited:
-      messages.some((m) => m?.toolsTruncated || m?.historyTruncated || Array.isArray(m?.tools) && m.tools.some(t => t?.truncated)) ||
+      messages.some((m) => !m?.toolsArchived && (m?.toolsTruncated || m?.historyTruncated || Array.isArray(m?.tools) && m.tools.some(t => t?.truncated))) ||
       !!session?.historyTruncated,
   };
 }

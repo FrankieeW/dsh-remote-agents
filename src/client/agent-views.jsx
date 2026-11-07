@@ -3,6 +3,7 @@ import { agentProfile } from "./agent-profiles.js";
 import { toolMatches } from "./agent-view-data.js";
 import { ToolCard } from "./chat-messages.jsx";
 import { TodoList } from "./chat-todos.jsx";
+import { ToolHistory } from "./tool-history.jsx";
 import { todoProgress } from "./tool-presentation.js";
 import {
   IconApiOutlineRegular,
@@ -15,7 +16,7 @@ import {
 export function AgentViewTabs({ provider, view, onChange, data, idPrefix }) {
   const tabs = agentProfile(provider).views || [{ id: "chat", label: "Chat" }];
   const counts = {
-    tools: data.records.length,
+    tools: data.totalTools ?? data.records.length,
     tasks: data.todos.length,
     changes: data.changes.length,
   };
@@ -90,7 +91,7 @@ export function AgentWelcome({ provider, workspace, onDraft }) {
   );
 }
 
-export function AgentDetailView({ session, view, data, onChat }) {
+export function AgentDetailView({ session, view, data, onChat, api }) {
   const profile = agentProfile(session.provider);
   const [filter, setFilter] = useState("all");
   const [visible, setVisible] = useState(40);
@@ -138,7 +139,7 @@ export function AgentDetailView({ session, view, data, onChat }) {
       ) : (
         <>
           <p className="agent-chat-caption">
-            {changes ? "Saved file-change records" : "Recorded tool activity"} ·{" "}
+            {changes ? "Previewed file-change records" : "Previewed tool activity"} ·{" "}
             {records.length} {records.length === 1 ? "record" : "records"}
           </p>
           {!changes && (
@@ -206,6 +207,9 @@ export function AgentDetailView({ session, view, data, onChat }) {
           </button>
         </p>
       )}
+      {api && session.messages.filter(m => m.toolsArchived && m.toolCount > 0).map(message => <ToolHistory
+        key={message.id} api={api} session={session} message={message} preview={false}
+        renderTool={tool => <ToolCard tool={tool} cwd={session.cwd} />} />)}
     </section>
   );
 }

@@ -201,6 +201,10 @@ export function describeTool(tool, { cwd } = {}) {
 /** The newest todo list any tool call in the transcript wrote, or null. */
 export function latestTodos(messages) {
   for (const message of [...(Array.isArray(messages) ? messages : [])].reverse()) {
+    if (message?.latestTodoTool) {
+      const todos = toolTodos(message.latestTodoTool);
+      if (todos !== null) return todos;
+    }
     for (const tool of [...(Array.isArray(message?.tools) ? message.tools : [])].reverse()) {
       const todos = toolTodos(tool);
       if (todos !== null) return todos;

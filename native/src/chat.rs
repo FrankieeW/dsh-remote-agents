@@ -32,6 +32,7 @@ pub struct ChatStore {
     pub pending: HashMap<String, Pending>,
     pub storage_error: Option<String>,
     pub dirty: bool,
+    pub tools: crate::tool_history::ToolHistory,
     _lock: File,
 }
 fn bound(v: &Value, max: usize) -> (Value, bool) {
@@ -116,6 +117,9 @@ impl ChatStore {
             }
         }
         let mut store = Self {
+            tools: crate::tool_history::ToolHistory::new(
+                path.parent().unwrap().join("tool-history"),
+            ),
             path,
             state,
             live: HashMap::new(),
@@ -124,6 +128,45 @@ impl ChatStore {
             dirty: false,
             _lock: lock,
         };
+        // Reconcile previews from durable records after a crash between archive and snapshot writes.
+        for session in store.state["sessions"].as_array_mut().unwrap() {
+            let sid = s(session, "id").to_owned();
+            for message in session["messages"].as_array_mut().unwrap() {
+                if message["toolsArchived"] != true {
+                    continue;
+                }
+                let mid = s(message, "id").to_owned();
+                let recovered = (|| -> Result<()> {
+                    let rows = store.tools.index(&sid, &mid)?;
+                    if rows.len() < message["toolCount"].as_u64().unwrap_or(0) as usize {
+                        return err(
+                            "HISTORY_UNAVAILABLE",
+                            "Tool archive index is missing records",
+                        );
+                    }
+                    message["toolCount"] = json!(rows.len());
+                    message["tools"] = json!(
+                        rows.iter()
+                            .take(16)
+                            .map(|r| store.tools.preview(&sid, &mid, s(r, "id"), 4096))
+                            .collect::<Result<Vec<_>>>()?
+                    );
+                    if let Some(row) = rows.iter().rev().find(|r| {
+                        matches!(
+                            s(r, "name").to_lowercase().as_str(),
+                            "todo" | "todowrite" | "todo_write" | "update_plan" | "update_todos"
+                        )
+                    }) {
+                        message["latestTodoTool"] =
+                            store.tools.preview(&sid, &mid, s(row, "id"), 65536)?;
+                    }
+                    Ok(())
+                })();
+                if let Err(e) = recovered {
+                    message["toolHistoryError"] = json!(e.message);
+                }
+            }
+        }
         if changed {
             store.save()?
         }
@@ -142,6 +185,15 @@ impl ChatStore {
     }
     pub fn snapshot(&self, id: &str) -> Result<Value> {
         let mut s = self.session(id)?;
+        for message in s["messages"].as_array_mut().unwrap() {
+            if !self.current(id, crate::common::s(message, "id")) {
+                for tool in message["tools"].as_array_mut().unwrap() {
+                    if tool["archived"] == true && tool["status"] == "running" {
+                        tool["status"] = json!("interrupted");
+                    }
+                }
+            }
+        }
         s.as_object_mut().unwrap().remove("requests");
         s["pendingApprovals"] = json!(
             self.pending
@@ -367,8 +419,7 @@ impl ChatStore {
             );
         }
         let token = id();
-        let assistant =
-            json!({"id":token,"role":"assistant","text":"","tools":[],"createdAt":now()});
+        let assistant = json!({"id":token,"role":"assistant","text":"","tools":[],"toolsArchived":true,"toolCount":0,"createdAt":now()});
         let session = &mut self.state["sessions"][index];
         let messages = session["messages"].as_array_mut().unwrap();
         messages.push(json!({"id":id(),"role":"user","text":text,"tools":[],"createdAt":now()}));
@@ -383,7 +434,7 @@ impl ChatStore {
             session["historyTruncated"] = json!(true)
         }
         session["requests"].as_array_mut().unwrap().push(
-            json!({"requestId":request_id,"textHash":hash(&text),"assistantMessageId":token}),
+            json!({"requestId":request_id,"textHash":hash(&text),"assistantMessageId":token,"toolsArchived":true}),
         );
         session["status"] = json!("running");
         session["updatedAt"] = json!(now());
@@ -412,6 +463,45 @@ impl ChatStore {
             return;
         }
         let Ok(i) = self.index(sid) else { return };
+        if kind.starts_with("tool.") {
+            let message = self.state["sessions"][i]["messages"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|m| m["id"] == token);
+            let Some(message) = message else { return };
+            if message.get("toolHistoryError").is_some() {
+                return;
+            }
+            match self.tools.record(sid, token, kind, &p) {
+                Ok((count, preview, todo)) => {
+                    message["toolCount"] = json!(count);
+                    if let Some(tool) = preview {
+                        let rows = message["tools"].as_array_mut().unwrap();
+                        if let Some(old) = rows.iter_mut().find(|v| v["id"] == tool["id"]) {
+                            *old = tool;
+                        } else {
+                            rows.push(tool);
+                        }
+                    }
+                    if let Some(tool) = todo {
+                        message["latestTodoTool"] = tool;
+                    }
+                }
+                Err(e) => {
+                    message["toolHistoryError"] = json!(format!(
+                        "Could not save complete tool history: {}. Cancellation requested; inspect the agent's original log.",
+                        e.message
+                    ));
+                    if let Some(live) = self.live.get(sid) {
+                        let _ = live.control.try_send(Control::Abort);
+                    }
+                }
+            }
+            self.state["sessions"][i]["updatedAt"] = json!(now());
+            self.dirty = true;
+            return;
+        }
         let session = &mut self.state["sessions"][i];
         if kind == "provider.session" {
             if let Some(id) = p["id"].as_str().filter(|v| !v.is_empty() && v.len() <= 512) {
@@ -441,53 +531,6 @@ impl ChatStore {
                 message["text"] = json!(clip(&t, 65536));
                 if t.chars().count() > 65536 {
                     message["textTruncated"] = json!(true)
-                }
-            } else if kind.starts_with("tool.") {
-                let tool_id = s(&p, "id");
-                if tool_id.is_empty() || tool_id.len() > 128 {
-                    return;
-                }
-                let tools = message["tools"].as_array_mut().unwrap();
-                let existing = tools.iter().position(|t| t["id"] == tool_id);
-                if kind == "tool.start" {
-                    if existing.is_some() {
-                        return;
-                    }
-                    if tools.len() >= 16 {
-                        message["toolsTruncated"] = json!(true);
-                        self.dirty = true;
-                        return;
-                    }
-                    let (input, truncated) = bound(&p["input"], 4096);
-                    tools.push(json!({"id":tool_id,"name":clip(s(&p,"name"),128),"input":input,"text":"","status":"running","truncated":truncated}));
-                } else if let Some(i) = existing {
-                    let t = &mut tools[i];
-                    let mut truncated = t["truncated"] == true;
-                    match kind {
-                        "tool.input" => {
-                            let (v, tr) = bound(&p["input"], 4096);
-                            t["input"] = v;
-                            truncated |= tr
-                        }
-                        "tool.update" => {
-                            let v = format!("{}{}", s(t, "text"), s(&p, "text"));
-                            truncated |= v.chars().count() > 4096;
-                            t["text"] = json!(clip(&v, 4096))
-                        }
-                        "tool.end" => {
-                            let (v, tr) = bound(&p["result"], 4096);
-                            t["result"] = v;
-                            truncated |= tr;
-                            t["isError"] = json!(p["isError"] == true);
-                            t["status"] = json!(if p["isError"] == true {
-                                "error"
-                            } else {
-                                "done"
-                            })
-                        }
-                        _ => return,
-                    };
-                    t["truncated"] = json!(truncated)
                 }
             } else {
                 return;
@@ -587,12 +630,24 @@ impl ChatStore {
         }
         self.expire(sid, None);
         self.live.remove(sid);
+        self.tools.forget(sid, token);
         if let Ok(i) = self.index(sid) {
             let session = &mut self.state["sessions"][i];
             session["status"] = json!(if result.is_ok() { "idle" } else { "error" });
             session["updatedAt"] = json!(now());
             if let Err(e) = result {
                 session["error"] = json!(clip(&e.message, 2048))
+            }
+            if let Some(error) = session["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|m| m["id"] == token)
+                .and_then(|m| m.get("toolHistoryError"))
+                .cloned()
+            {
+                session["status"] = json!("error");
+                session["error"] = error;
             }
             let _ = self.save();
         }
@@ -603,6 +658,7 @@ impl ChatStore {
             return self.snapshot(sid);
         }
         if let Some(live) = self.live.remove(sid) {
+            self.tools.forget(sid, &live.token);
             let _ = live.control.try_send(Control::Abort);
         }
         self.expire(sid, None);
@@ -669,6 +725,9 @@ impl ChatStore {
                     "Only the first 16 tool calls were retained in the plugin preview.\n\n",
                 )
             }
+            if m["toolsArchived"] == true {
+                out.push_str(&format!("Tool preview: {} of {} calls. Use Export full tools in this turn to download the complete archive.\n\n",m["tools"].as_array().unwrap().len(),m["toolCount"]));
+            }
             for tool in m["tools"].as_array().unwrap() {
                 let data = serde_json::to_string_pretty(
                     &json!({"input":tool["input"],"result":tool["result"],"status":tool["status"]}),
@@ -690,5 +749,114 @@ impl ChatStore {
         Ok(
             json!({"filename":format!("conversation-{sid}.md"),"mime":"text/markdown","content":out}),
         )
+    }
+    pub fn tool_history_reader(
+        &self,
+        p: &Value,
+    ) -> Result<(crate::tool_history::ToolHistory, String, String, bool, u64)> {
+        let session = self.session(s(p, "id"))?;
+        // Request receipts survive preview retention; no arbitrary disk path is accepted.
+        let mid = required(p, "messageId", 128)?;
+        if !session["requests"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["assistantMessageId"] == mid)
+        {
+            return err("NOT_FOUND", "Message does not belong to this session");
+        }
+        if !session["requests"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["assistantMessageId"] == mid && r["toolsArchived"] == true)
+        {
+            return err(
+                "HISTORY_UNAVAILABLE",
+                "This turn has no complete plugin archive; try original OMP recovery.",
+            );
+        }
+        if let Some(message) = session["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["id"] == mid)
+        {
+            if message["toolsArchived"] != true {
+                return err(
+                    "HISTORY_UNAVAILABLE",
+                    "This older turn has no complete plugin archive. For OMP, try the original turn reader.",
+                );
+            }
+        }
+        Ok((
+            self.tools.reader(),
+            s(&session, "id").to_owned(),
+            mid.clone(),
+            self.current(s(&session, "id"), &mid),
+            session["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|m| m["id"] == mid)
+                .and_then(|m| m["toolCount"].as_u64())
+                .unwrap_or(0),
+        ))
+    }
+    pub fn recover_tools(&mut self, p: &Value) -> Result<Value> {
+        let sid = required(p, "id", 128)?;
+        let session = self.session(&sid)?;
+        if !self.live.is_empty() {
+            return err(
+                "BUSY",
+                "Stop active plugin turns before recovering original tools",
+            );
+        }
+        let mid = required(p, "messageId", 128)?;
+        let mi = session["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .position(|m| m["id"] == mid)
+            .ok_or_else(|| Error::new("NOT_FOUND", "Message not found"))?;
+        if session["messages"][mi]["toolsArchived"] == true {
+            return err("CONFLICT", "This turn already has an archive");
+        }
+        let root = self.path.parent().unwrap().join("omp-sessions");
+        let recovered = history::recover(&root, &session, p, &mut self.tools)?;
+        self.tools.forget(&sid, &mid);
+        let mut updated = session.clone();
+        let message = &mut updated["messages"][mi];
+        message["toolsArchived"] = json!(true);
+        message["archiveSource"] = json!("omp-original");
+        message["toolCount"] = recovered["totalTools"].clone();
+        message.as_object_mut().unwrap().remove("toolsTruncated");
+        let rows = self.tools.index(&sid, &mid)?;
+        message["tools"] = json!(
+            rows.iter()
+                .take(16)
+                .map(|r| self.tools.preview(&sid, &mid, s(r, "id"), 4096))
+                .collect::<Result<Vec<_>>>()?
+        );
+        if let Some(row) = rows.iter().rev().find(|r| {
+            matches!(
+                s(r, "name").to_lowercase().as_str(),
+                "todo" | "todowrite" | "todo_write" | "update_plan" | "update_todos"
+            )
+        }) {
+            message["latestTodoTool"] = self.tools.preview(&sid, &mid, s(row, "id"), 65536)?;
+        }
+        for receipt in updated["requests"].as_array_mut().unwrap() {
+            if receipt["assistantMessageId"] == mid {
+                receipt["toolsArchived"] = json!(true);
+            }
+        }
+        let i = self.index(&sid)?;
+        self.state["sessions"][i] = updated;
+        if let Err(e) = self.save() {
+            self.state["sessions"][i] = session;
+            return Err(e);
+        }
+        self.snapshot(&sid)
     }
 }

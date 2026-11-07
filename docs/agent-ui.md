@@ -24,7 +24,7 @@ Settings retain each provider's actual permissions and reasoning choices. The la
 
 ## Recorded-data limits
 
-These views summarize retained conversation records, not a live repository scan. Tool lists load 40 records at a time. The task view displays the latest recognized list. Missing task data is not interpreted as completion.
+These views summarize conversation records, not a live repository scan. Overview tool lists show retained previews in batches of 40. From alpha.3, each archived turn also exposes full-tool search and 16-record pagination; full values and JSONL export are available there. The task view displays the latest recognized list, including task updates after the first 16 calls. Missing task data is not interpreted as completion.
 
 Codex changes show recorded patch hunks, not reconstructed full files. Malformed, headerless or unsupported patches retain their raw representation. When saved data was shortened, the view shows a notice and a route back to conversation history. Existing full-history loading remains in Chat.
 

@@ -25,6 +25,8 @@ export const ENDPOINTS = [
   "chatSearch",
   "chatExport",
   "chatOmpHistory",
+  "chatToolHistory",
+  "chatRecoverOmpTools",
   "workspaceRemove",
   "agentUpdatePlan",
   "chatProviders",
