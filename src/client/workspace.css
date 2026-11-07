@@ -299,6 +299,8 @@ html[data-input-modality="keyboard"] .agent-workspace-heading:focus-within .agen
 }
 .agent-workspace-add-panel select { height: 32px; width: 100%; padding: 0 8px; border: .5px solid var(--dsw-alias-border-l4); border-radius: var(--dsw-radius-md); background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-2)); color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; }
 .agent-workspace-directory-hint { color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 16px; }
+.agent-workspace-manage { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 12px; line-height: 18px; cursor: pointer; }
+.agent-workspace-manage:hover { color: var(--dsw-alias-label-primary); text-decoration: underline; }
 .agent-workspace-directories { display: flex; flex-direction: column; max-height: 180px; overflow-y: auto; }
 .agent-workspace-directories button { display: flex; flex: none; align-items: center; gap: 7px; min-height: 28px; padding: 4px 7px; border: 0; border-radius: var(--dsw-radius-sm); background: transparent; text-align: left; cursor: pointer; }
 .agent-workspace-directories button:hover, .agent-workspace-directories button[aria-selected="true"] { background: var(--dsw-alias-interactive-bg-hover); }

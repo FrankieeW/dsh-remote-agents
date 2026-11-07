@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import HerdrImport, { machineAddress } from "./HerdrImport.jsx";
+import HerdrImport from "./HerdrImport.jsx";
+import { ConfirmDialog } from "./fleet-confirm.jsx";
+import { LaunchForm } from "./fleet-launch.jsx";
+import { MachinePanel } from "./fleet-machines.jsx";
+import { activeMachines } from "./machines.js";
 
 const STATUS = { running: "Running", exited: "Exited", unknown: "Unknown" };
 const messageOf = (error) =>
   error instanceof Error ? error.message : String(error || "Request failed. Please try again.");
-const localMachine = (machine) =>
-  machine.type === "local" || machine.kind === "local";
 const statusOf = (status) =>
   Object.hasOwn(STATUS, status) ? status : "unknown";
 
@@ -47,12 +49,9 @@ export default function FleetPage({ api }) {
   const [busy, setBusy] = useState("");
   const [actionError, setActionError] = useState("");
   const [notice, setNotice] = useState("");
-  const [probeResults, setProbeResults] = useState({});
-  const [addOpen, setAddOpen] = useState(false);
   const [startOpen, setStartOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [confirm, setConfirm] = useState(null);
-  const [machineForm, setMachineForm] = useState({ name: "", host: "" });
   const [startForm, setStartForm] = useState({
     machineId: "",
     name: "",
@@ -65,7 +64,6 @@ export default function FleetPage({ api }) {
   const lock = useRef(false);
   const pendingSelection = useRef("");
   const mounted = useRef(false);
-  const confirmCancel = useRef(null);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -152,6 +150,7 @@ export default function FleetPage({ api }) {
   }, [api, selectedId, auto, refresh]);
 
   const machines = snapshot?.machines || [];
+  const active = activeMachines(machines);
   const agents = snapshot?.agents || [];
   const selected = agents.find((agent) => agent.id === selectedId);
   const visibleAgents = agents.filter(
@@ -165,6 +164,7 @@ export default function FleetPage({ api }) {
       if (!result.has(key))
         result.set(key, {
           key,
+          projectId: project.id,
           machineId: project.machineId,
           cwd: project.cwd,
           name: project.name,
@@ -196,16 +196,13 @@ export default function FleetPage({ api }) {
     if (
       snapshot &&
       machineFilter &&
-      !machines.some((machine) => machine.id === machineFilter)
+      !active.some((machine) => machine.id === machineFilter)
     )
       setMachineFilter("");
   }, [snapshot, selectedId, machineFilter]);
   useEffect(() => {
     setText("");
   }, [selectedId]);
-  useEffect(() => {
-    if (confirm) confirmCancel.current?.focus();
-  }, [confirm]);
 
   const machineName = (id) =>
     machines.find((machine) => machine.id === id)?.name || id;
@@ -228,20 +225,6 @@ export default function FleetPage({ api }) {
       }
     }
   }
-  function addMachine(event) {
-    event.preventDefault();
-    run("Add machine", async () => {
-      await api("addMachine", {
-        name: machineForm.name.trim(),
-        host: machineForm.host.trim(),
-      });
-      if (mounted.current) {
-        setMachineForm({ name: "", host: "" });
-        setAddOpen(false);
-        setNotice("SSH machine added. Test the connection before starting an agent.");
-      }
-    });
-  }
   function startAgent(event) {
     event.preventDefault();
     run("Start agent", async () => {
@@ -253,7 +236,7 @@ export default function FleetPage({ api }) {
       }
       if (!Array.isArray(args) || args.some((arg) => typeof arg !== "string"))
         throw new Error("Every additional argument must be a string.");
-      const machineId = startForm.machineId || machineFilter || machines[0]?.id;
+      const machineId = startForm.machineId || machineFilter || active[0]?.id;
       if (!machineId) throw new Error("Add or select a machine first.");
       if (!startForm.cwd.startsWith("/"))
         throw new Error("The project directory must be an absolute path on the target machine (starting with /).");
@@ -283,6 +266,36 @@ export default function FleetPage({ api }) {
           ? "This terminates the managed tmux session. Unsaved work may be lost. This cannot be undone."
           : "This sends Ctrl+C to the process. It may cancel the current task without removing the session.",
       label: endpoint === "stop" ? "Confirm stop" : "Send Ctrl+C",
+    });
+  }
+  /** Deletes a terminal record; never touches the session itself. */
+  function requestForget(agent) {
+    setConfirm(
+      agent.stoppedAt
+        ? {
+            endpoint: "forgetAgent",
+            payload: { agentId: agent.id },
+            title: `Remove “${agent.name}” from the list?`,
+            description: "The session is already stopped. Only its record is deleted.",
+            label: "Remove from list",
+          }
+        : {
+            endpoint: "forgetAgent",
+            payload: { agentId: agent.id, force: true },
+            title: `Forget “${agent.name}”?`,
+            description:
+              "Use this when the machine is gone or the session cannot be verified. Forgetting never terminates the session: if it still runs on the machine, it keeps running unmanaged.",
+            label: "Forget record",
+          },
+    );
+  }
+  function requestWorkspaceRemoval(group) {
+    setConfirm({
+      endpoint: "workspaceRemove",
+      payload: { workspaceId: group.projectId },
+      title: `Remove “${group.name || group.cwd}” from registered workspaces?`,
+      description: "Its files and conversations are kept, and terminals in this directory stay listed.",
+      label: "Remove registration",
     });
   }
   const currentOutput = output?.agentId === selectedId ? output : null;
@@ -352,164 +365,19 @@ export default function FleetPage({ api }) {
         </div>
       )}
       <div className="fleet-workspace">
-        <aside className="fleet-sidebar">
-          <div className="fleet-section-heading">
-            <h2>Machines</h2>
-            <span className="fleet-count">
-              {snapshot ? machines.length : "—"}
-            </span>
-          </div>
-          <button
-            className={`fleet-machine fleet-machine--all ${!machineFilter ? "is-active" : ""}`}
-            onClick={() => setMachineFilter("")}
-          >
-            <span className="fleet-machine-icon">▦</span>
-            <span>
-              <strong>All machines</strong>
-              <small>Projects across machines</small>
-            </span>
-            <span className="fleet-count">
-              {snapshot ? agents.length : "—"}
-            </span>
-          </button>
-          <div className="fleet-machine-list">
-            {machines.map((machine) => (
-              <div
-                className={`fleet-machine-wrap ${machineFilter === machine.id ? "is-active" : ""}`}
-                key={machine.id}
-              >
-                <button
-                  className="fleet-machine"
-                  onClick={() => setMachineFilter(machine.id)}
-                >
-                  <span className="fleet-machine-icon" aria-hidden="true">
-                    {localMachine(machine) ? "▣" : "⌁"}
-                  </span>
-                  <span>
-                    <strong>{machine.name}</strong>
-                    <small>
-                      {localMachine(machine)
-                        ? "Local machine"
-                        : machineAddress(machine)}
-                    </small>
-                  </span>
-                </button>
-                <div className="fleet-machine-actions">
-                  <button
-                    disabled={!!busy}
-                    onClick={() =>
-                      run("Test connection", async () => {
-                        const result = await api("probe", {
-                          machineId: machine.id,
-                        });
-                        if (mounted.current)
-                          setProbeResults((previous) => ({
-                            ...previous,
-                            [machine.id]: result,
-                          }));
-                      })
-                    }
-                  >
-                    Test connection
-                  </button>
-                  {!localMachine(machine) && (
-                    <button
-                      disabled={!!busy}
-                      onClick={() =>
-                        setConfirm({
-                          endpoint: "removeMachine",
-                          payload: { machineId: machine.id },
-                          title: `Remove “${machine.name}”?`,
-                          description:
-                            "Only the machine record is removed. Machines with managed agents or imported projects cannot be removed. SSH configuration is unchanged.",
-                          label: "Confirm removal",
-                        })
-                      }
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-                {probeResults[machine.id] && (
-                  <p
-                    className={`fleet-probe ${probeResults[machine.id].ok ? "is-ok" : "is-error"}`}
-                    role="status"
-                  >
-                    {probeResults[machine.id].ok
-                      ? "Connection test succeeded"
-                      : `Connection failed: ${probeResults[machine.id].error || "Check the SSH and tmux configuration"}`}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-          {!snapshot && (
-            <p className="fleet-muted">
-              {loading ? "Loading machines…" : "Machine list is not available"}
-            </p>
-          )}
-          <button
-            className="fleet-button fleet-add-machine"
-            onClick={() => setAddOpen(!addOpen)}
-            aria-expanded={addOpen}
-          >
-            ＋ Add SSH machine
-          </button>
-          {addOpen && (
-            <form
-              className="fleet-form fleet-machine-form"
-              onSubmit={addMachine}
-            >
-              <label>
-                Display name
-                <input
-                  required
-                  maxLength={80}
-                  value={machineForm.name}
-                  onChange={(event) =>
-                    setMachineForm({ ...machineForm, name: event.target.value })
-                  }
-                  placeholder="e.g. Development server"
-                />
-              </label>
-              <label>
-                SSH host / alias
-                <input
-                  required
-                  value={machineForm.host}
-                  onChange={(event) =>
-                    setMachineForm({ ...machineForm, host: event.target.value })
-                  }
-                  placeholder="e.g. dev-server"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                />
-              </label>
-              <p className="fleet-muted">
-                Uses existing SSH configuration and keys. Passwords are never stored. Verify unknown hosts in your terminal first.
-              </p>
-              <button
-                className="fleet-button fleet-button--primary"
-                disabled={!!busy}
-              >
-                Add machine
-              </button>
-            </form>
-          )}
-          <button
-            className="fleet-button fleet-add-machine"
-            onClick={() => setImportOpen(!importOpen)}
-            disabled={!!busy}
-            aria-expanded={importOpen}
-          >
-            ◇ Import from Herdr
-          </button>
-          <div className="fleet-sidebar-note">
-            <span aria-hidden="true">◈</span>
-            <strong>Your machines, your sessions</strong>
-            <p>Only sessions created by this workbench are managed. Existing terminals are left untouched.</p>
-          </div>
-        </aside>
+        <MachinePanel
+          api={api}
+          snapshot={snapshot}
+          loading={loading}
+          busy={busy}
+          run={run}
+          filter={machineFilter}
+          onFilter={setMachineFilter}
+          onConfirm={setConfirm}
+          onNotice={(message) => mounted.current && setNotice(message)}
+          importOpen={importOpen}
+          onImport={() => setImportOpen(!importOpen)}
+        />
 
         <section className="fleet-projects" aria-label="Projects and agents">
           <div className="fleet-main-heading">
@@ -525,7 +393,7 @@ export default function FleetPage({ api }) {
             </div>
             <button
               className="fleet-button fleet-button--primary"
-              disabled={!machines.length || !!busy}
+              disabled={!active.length || !!busy}
               onClick={() => setStartOpen(!startOpen)}
               aria-expanded={startOpen}
             >
@@ -551,7 +419,7 @@ export default function FleetPage({ api }) {
           {importOpen && (
             <HerdrImport
               api={api}
-              machines={machines}
+              machines={active}
               busy={busy}
               run={run}
               onClose={() => setImportOpen(false)}
@@ -564,105 +432,15 @@ export default function FleetPage({ api }) {
             />
           )}
           {startOpen && (
-            <form className="fleet-form fleet-launch" onSubmit={startAgent}>
-              <div className="fleet-section-heading">
-                <h3>New agent</h3>
-                <button
-                  type="button"
-                  aria-label="Close launch form"
-                  onClick={() => setStartOpen(false)}
-                >
-                  ×
-                </button>
-              </div>
-              <div className="fleet-form-grid">
-                <label>
-                  Target machine
-                  <select
-                    value={
-                      startForm.machineId ||
-                      machineFilter ||
-                      machines[0]?.id ||
-                      ""
-                    }
-                    onChange={(event) =>
-                      setStartForm({
-                        ...startForm,
-                        machineId: event.target.value,
-                      })
-                    }
-                  >
-                    {machines.map((machine) => (
-                      <option key={machine.id} value={machine.id}>
-                        {machine.name} ·{" "}
-                        {localMachine(machine)
-                          ? "Local"
-                          : machineAddress(machine)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Program
-                  <select
-                    value={startForm.kind}
-                    onChange={(event) =>
-                      setStartForm({ ...startForm, kind: event.target.value })
-                    }
-                  >
-                    <option value="codex">Codex</option>
-                    <option value="claude">Claude Code</option>
-                    <option value="dsh">DeepSeek Harness</option>
-                    <option value="shell">Shell</option>
-                  </select>
-                </label>
-                <label>
-                  Agent name
-                  <input
-                    required
-                    maxLength={80}
-                    value={startForm.name}
-                    onChange={(event) =>
-                      setStartForm({ ...startForm, name: event.target.value })
-                    }
-                    placeholder="Name this task"
-                  />
-                </label>
-                <label>
-                  Absolute project path
-                  <input
-                    required
-                    value={startForm.cwd}
-                    onChange={(event) =>
-                      setStartForm({ ...startForm, cwd: event.target.value })
-                    }
-                    placeholder="/home/user/project"
-                    spellCheck={false}
-                  />
-                </label>
-              </div>
-              <label>
-                Additional arguments{" "}
-                <span className="fleet-muted">Optional · JSON array of strings</span>
-                <input
-                  value={startForm.args}
-                  onChange={(event) =>
-                    setStartForm({ ...startForm, args: event.target.value })
-                  }
-                  placeholder={'["--help"]'}
-                  spellCheck={false}
-                />
-              </label>
-              <p className="fleet-muted">
-                The program and project directory must already exist on the target machine. Nothing is installed automatically and permission prompts are not bypassed.
-              </p>
-              <button
-                className="fleet-button fleet-button--primary"
-                disabled={!!busy}
-              >
-                {busy === "Start agent" ? "Starting…" : "Start process"}
-              </button>
-            </form>
+            <LaunchForm
+              machines={active}
+              machineFilter={machineFilter}
+              startForm={startForm}
+              setStartForm={setStartForm}
+              busy={busy}
+              onSubmit={startAgent}
+              onClose={() => setStartOpen(false)}
+            />
           )}
           {!snapshot ? (
             <Empty title={loading ? "Connecting to the workbench" : "Unable to load"}>
@@ -694,11 +472,20 @@ export default function FleetPage({ api }) {
                       </span>
                     </p>
                   </div>
+                  {group.projectId && (
+                    <button
+                      className="fleet-button fleet-project-start"
+                      disabled={!!busy}
+                      onClick={() => requestWorkspaceRemoval(group)}
+                    >
+                      Remove registration
+                    </button>
+                  )}
                   <button
                     className="fleet-button fleet-project-start"
                     disabled={
                       !!busy ||
-                      !machines.some(
+                      !active.some(
                         (machine) => machine.id === group.machineId,
                       )
                     }
@@ -880,6 +667,17 @@ export default function FleetPage({ api }) {
                   {selected.stoppedAt ? "Session stopped" : "Stop session"}
                 </button>
               </div>
+              {(selected.stoppedAt || selectedStatus !== "running") && (
+                <div className="fleet-record-actions">
+                  <button
+                    className="fleet-button"
+                    disabled={!!busy}
+                    onClick={() => requestForget(selected)}
+                  >
+                    {selected.stoppedAt ? "Remove from list" : "Forget record"}
+                  </button>
+                </div>
+              )}
             </>
           )}
         </aside>
@@ -895,64 +693,19 @@ export default function FleetPage({ api }) {
         </span>
       </footer>
       {confirm && (
-        <div
-          className="fleet-modal-backdrop"
-          onKeyDown={(event) => {
-            if (event.key === "Escape" && !busy) setConfirm(null);
-            if (event.key === "Tab") {
-              const buttons = event.currentTarget.querySelectorAll(
-                "button:not(:disabled)",
-              );
-              const first = buttons[0];
-              const last = buttons[buttons.length - 1];
-              if (event.shiftKey && document.activeElement === first) {
-                event.preventDefault();
-                last?.focus();
-              } else if (!event.shiftKey && document.activeElement === last) {
-                event.preventDefault();
-                first?.focus();
-              }
-            }
+        <ConfirmDialog
+          confirm={confirm}
+          busy={busy}
+          onCancel={() => setConfirm(null)}
+          onConfirm={() => {
+            const action = confirm;
+            setConfirm(null);
+            run(action.label, async () => {
+              const result = await api(action.endpoint, action.payload);
+              if (mounted.current) setNotice(action.notice ? action.notice(result) : "Action completed.");
+            });
           }}
-        >
-          <section
-            className="fleet-modal"
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="fleet-confirm-title"
-            aria-describedby="fleet-confirm-description"
-          >
-            <span className="fleet-modal-icon" aria-hidden="true">
-              !
-            </span>
-            <h2 id="fleet-confirm-title">{confirm.title}</h2>
-            <p id="fleet-confirm-description">{confirm.description}</p>
-            <div>
-              <button
-                ref={confirmCancel}
-                className="fleet-button"
-                disabled={!!busy}
-                onClick={() => setConfirm(null)}
-              >
-                Cancel
-              </button>
-              <button
-                className="fleet-button fleet-button--danger"
-                disabled={!!busy}
-                onClick={() => {
-                  const action = confirm;
-                  setConfirm(null);
-                  run(action.label, async () => {
-                    await api(action.endpoint, action.payload);
-                    if (mounted.current) setNotice("Action completed.");
-                  });
-                }}
-              >
-                {confirm.label}
-              </button>
-            </div>
-          </section>
-        </div>
+        />
       )}
     </main>
   );

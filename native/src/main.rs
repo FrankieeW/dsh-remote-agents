@@ -34,15 +34,7 @@ fn exec_ssh(args: &[String]) -> Result<()> {
     };
     let machine: Value = serde_json::from_str(&args[0])?;
     let host = Host { machine };
-    let command = format!(
-        "export PATH=\"$HOME/.local/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH\"; cd {} && exec {}",
-        dsh_remote_agents_backend::hosts::shell_path(&args[1])?,
-        args[2..]
-            .iter()
-            .map(|s| quote(s))
-            .collect::<Vec<_>>()
-            .join(" ")
-    );
+    let command = dsh_remote_agents_backend::hosts::remote_exec(&args[2], &args[3..], &args[1])?;
     let error = std::process::Command::new("ssh")
         .args(host.ssh_args(&command)?)
         .exec();

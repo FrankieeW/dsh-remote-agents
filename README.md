@@ -74,7 +74,7 @@ Versions up to **0.4.1** are the JavaScript-backed implementation. They remain a
 - Under each **Workspace**, use the compact **new-session icon → DSH / Claude Code / Codex / OMP**. The session inherits that workspace's directory and opens immediately; no separate Session Workbench or second creation form.
 - Agent logos distinguish sessions in the shared list and conversation header. **DSH** keeps its original conversation renderer and model configuration; **Claude Code / Codex / OMP** use structured chat with streaming text, tool calls/results, permission decisions and interruption—not terminal output disguised as chat.
 - Composer model search/custom IDs, per-model reasoning levels and native permission modes (including explicit YOLO), with **Follow CLI** defaults. Changes are session-scoped, persisted and applied on the next turn; running turns lock the controls.
-- **Add workspace → Machine → Directory** supports saved SSH hosts and new SSH aliases, `~/` expansion, directory suggestions, Tab completion and arrow-key selection. Remote sessions use the selected host's CLI, models and authentication.
+- **Add workspace → Machine → Directory** supports saved SSH hosts and new SSH destinations (tested before saving), `~/` expansion, directory suggestions, Tab completion and arrow-key selection. Remote sessions use the selected host's CLI, models and authentication.
 - Remote workspace **CLI versions & updates** exposes explicit per-agent update buttons, asynchronous progress, duplicate-update protection and post-update version/compatibility checks. No updates run on discovery or reconnect.
 - Native DSH semantic theme tokens, including light/dark mode, typography, compact controls and layout clearances.
 - Native DSH rows keep live approval/question/plan-review warnings and unread-completion markers. Pending interaction takes precedence over running, and running takes precedence over completion reminders.
@@ -93,7 +93,10 @@ See the [architecture, protocol references and capability boundaries](<docs/unif
 
 Open **Machines & projects** for:
 
-- Local machines and SSH aliases, explicit connection probes, project grouping.
+- Local machines and SSH destinations (alias, `user@host`, `host:port` or `ssh://user@host:port`) that are tested before saving, with an explicit **Save without testing** override. Destination fields suggest the `Host` aliases of `~/.ssh/config` that are not machines yet. They are read without running ssh.
+- Explicit connection tests that check SSH, tmux and Claude/Codex/OMP separately, explain SSH failures (unknown or changed host key, authentication, DNS, refused, timeout) and keep the last result on each machine.
+- Machine rename and address changes that keep conversations and workspaces; removal that names what blocks it and keeps a restorable tombstone while conversations reference the machine.
+- Project grouping, registration removal and forgetting terminal records on machines that are gone.
 - Codex, Claude Code, DSH TUI and shell processes in isolated tmux sessions.
 - Bounded terminal snapshots, literal input, interrupt and confirmed stop.
 - Persistent tmux sessions across SSH disconnects and plugin/Host restarts.
@@ -176,7 +179,8 @@ Only one live ChatManager may own a chat state directory; configure separate sta
 - Local argv execution and individually shell-quoted SSH parameters, with input validation and bounded operations.
 - Terminal input is an execution interface, not a safe chat-only text field.
 - Default fleet state: `~/.dsh/remote-agents/fleet.json`, respecting `DSH_HOME`. Override with `DSH_REMOTE_AGENTS_STATE` or Host option `statePath`.
-- Fleet state uses atomic mode-0600 writes and a cross-instance lock. It stores machine/project metadata and launch arguments, not terminal transcripts. **Never put secrets in launch arguments.**
+- Fleet state uses atomic mode-0600 writes and a cross-instance advisory lock that is released if a process crashes. SSH work never holds it, so one slow machine does not delay others.
+- Optional SSH connection reuse (`sshMultiplexing: true` Host option or `DSH_REMOTE_AGENTS_SSH_MULTIPLEX=1`) shares one connection per destination for the plugin's own SSH commands. On a local OpenSSH 10.5 server, a two-command directory listing dropped from about 105 ms to about 25 ms. It is off by default; see the [Fleet API](<src/core/API.md>) for its trade-offs. It stores machine/project metadata and launch arguments, not terminal transcripts. **Never put secrets in launch arguments.**
 - Legacy tmux sessions intentionally survive plugin unload/restart. Stop is an explicit destructive operation.
 - Failed startup/input is not automatically retried. If a process was created before a failure, inspect its recovery record before trying again.
 

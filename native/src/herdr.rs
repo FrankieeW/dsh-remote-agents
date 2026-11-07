@@ -1,47 +1,27 @@
-use crate::{common::*, hosts::valid_ssh};
+use crate::{
+    common::*,
+    machines::{machine_key, parse_target},
+};
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+/// Herdr catalogs use the strict destination grammar.
 fn target(t: &str) -> Option<Value> {
-    if t.is_empty() || t.len() > 512 || t.chars().any(|c| c.is_whitespace() || c == '%') {
-        return None;
-    }
-    let uri = t.starts_with("ssh://");
-    let mut raw = t.strip_prefix("ssh://").unwrap_or(t);
-    if uri {
-        raw = raw.strip_suffix('/').unwrap_or(raw)
-    }
-    let parts = raw.split('@').collect::<Vec<_>>();
-    if parts.len() > 2 {
-        return None;
-    }
-    let mut v = json!({});
-    let host = if parts.len() == 2 {
-        v["user"] = json!(parts[0]);
-        parts[1]
-    } else {
-        parts[0]
-    };
-    if host.starts_with('[') {
-        let end = host.find(']')?;
-        v["host"] = json!(&host[1..end]);
-        let rest = &host[end + 1..];
-        if !rest.is_empty() {
-            if !uri {
-                return None;
-            }
-            v["port"] = json!(rest.strip_prefix(':')?.parse::<u16>().ok()?);
-        }
-    } else if uri && host.contains(':') {
-        let (h, p) = host.rsplit_once(':')?;
-        v["host"] = json!(h);
-        v["port"] = json!(p.parse::<u16>().ok()?);
-    } else {
-        v["host"] = json!(host)
-    }
-    valid_ssh(&v).then_some(v)
+    parse_target(t, false)
 }
-pub fn key(m: &Value) -> String {
-    json!([m["host"], m["user"], m["port"]]).to_string()
+/// Machine configuration that invalidates a preview; probe results are volatile.
+fn machine_config(state: &Value) -> Value {
+    json!(
+        state["machines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| {
+                let mut m = m.clone();
+                m.as_object_mut().unwrap().remove("lastCheck");
+                m
+            })
+            .collect::<Vec<_>>()
+    )
 }
 fn parse(v: &Value, label: &str) -> Result<Value> {
     let source = text(v, 1024 * 1024, true)?;
@@ -61,13 +41,15 @@ pub fn preview(input: &Value, state: &Value) -> Result<Value> {
     let mut machines = vec![];
     let mut projects = vec![];
     let mut warnings = vec![];
-    let mut known = state["machines"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|m| s(m, "type") == "ssh")
-        .map(key)
-        .collect::<HashSet<_>>();
+    // Address → name of the removed machine using it (None while active).
+    let mut known = HashMap::new();
+    for m in state["machines"].as_array().unwrap().iter().filter(|m| s(m, "type") == "ssh") {
+        let removed = m.get("removedAt").map(|_| s(m, "name").to_owned());
+        let entry = known.entry(machine_key(m)).or_insert(removed.clone());
+        if removed.is_none() {
+            *entry = None
+        }
+    }
     let mut paths = state["projects"]
         .as_array()
         .unwrap()
@@ -122,10 +104,19 @@ pub fn preview(input: &Value, state: &Value) -> Result<Value> {
                 continue;
             }
             if let Some(mut t) = target(s(p, "target")) {
-                let action = if known.insert(key(&t)) {
-                    "add"
-                } else {
-                    "duplicate"
+                let action = match known.get(&machine_key(&t)) {
+                    None => {
+                        known.insert(machine_key(&t), None);
+                        "add"
+                    }
+                    Some(Some(name)) => {
+                        warnings.push(json!(format!(
+                            "Machine profile {}: matches the removed machine “{name}”; restore it in Machines & projects instead.",
+                            pn + 1
+                        )));
+                        "duplicate"
+                    }
+                    Some(None) => "duplicate",
                 };
                 t["name"] = p["label"].clone();
                 t["action"] = json!(action);
@@ -144,7 +135,7 @@ pub fn preview(input: &Value, state: &Value) -> Result<Value> {
             .as_array()
             .unwrap()
             .iter()
-            .any(|m| s(m, "id") == dest)
+            .any(|m| s(m, "id") == dest && m.get("removedAt").is_none())
         {
             return err(
                 "INVALID_IMPORT",
@@ -219,7 +210,7 @@ pub fn preview(input: &Value, state: &Value) -> Result<Value> {
     warnings.truncate(200);
     let mut result =
         json!({"machines":machines,"projects":projects,"warnings":warnings,"summary":summary});
-    let machine_config = state["machines"].clone();
+    let machine_config = machine_config(state);
     let project_config = state["projects"].clone();
     result["digest"]=json!(hash(json!({"format":1,"sourceHashes":[input.get("machinesText").map(|v|hash(s(&json!({"v":v}),"v"))),input.get("sessionText").map(|v|hash(s(&json!({"v":v}),"v")))],"projectMachineId":input["projectMachineId"],"machineConfig":machine_config,"projectConfig":project_config,"preview":result}).to_string()));
     Ok(result)

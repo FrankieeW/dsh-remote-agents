@@ -103,6 +103,7 @@ export function apply(ctx) {
     name: "sidebar.workspaces",
     priority: -10,
     inject: () => ({ store, chatPanel: CHAT_PANEL, onCreate, onOpen, onNativeAction,
+      onManageMachines: () => { ctx.layout.beginNavigation(); ctx.layout.selectPanel(PANEL); },
       onRemoveWorkspace: workspace => workspace.machineId && workspace.machineId !== "local" ? store.removeWorkspace(workspace.workspaceId) : ctx.workspaces.delete(workspace.workspaceId),
       onAddWorkspace: (path, machineId = "local") => machineId === "local" ? ctx.workspaces.create({ path }) : store.addRemoteWorkspace(machineId, path) }),
   }, WorkspaceBrowser));

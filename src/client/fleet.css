@@ -97,6 +97,22 @@
 .fleet-page .fleet-probe.is-ok { color: var(--fleet-success); }
 .fleet-page .fleet-probe.is-error { color: var(--fleet-error); }
 .fleet-page .fleet-add-machine { width: 100%; background: transparent; margin-top: 4px; font-size: .82em; }
+.fleet-page .fleet-probe.is-warn { color: var(--fleet-warn); }
+.fleet-page .fleet-probe.is-unknown { color: var(--fleet-caption); }
+.fleet-page .fleet-probe-time { color: var(--fleet-caption); }
+.fleet-page .fleet-machine-edit { padding: 0 10px 10px; gap: 8px; }
+:where(.fleet-page) .fleet-form-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.fleet-page .fleet-machine-failure { color: var(--fleet-error); font-size: .8em; line-height: 1.5; overflow-wrap: anywhere; }
+.fleet-page .fleet-removed { display: flex; flex-direction: column; gap: 6px; }
+.fleet-page .fleet-removed ul { list-style: none; margin: 0; padding: 0 8px; display: flex; flex-direction: column; gap: 8px; }
+.fleet-page .fleet-removed li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: .82em; }
+.fleet-page .fleet-removed li > span { min-width: 0; }
+.fleet-page .fleet-removed li :is(strong, small) { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fleet-page .fleet-removed li strong { font-weight: 500; }
+.fleet-page .fleet-removed li small { color: var(--fleet-caption); margin-top: 2px; }
+.fleet-page .fleet-removed li button { flex: none; padding: 0; color: var(--fleet-muted); }
+.fleet-page .fleet-removed li button:hover { color: var(--fleet-text); text-decoration: underline; }
+.fleet-page .fleet-removed > .fleet-muted { padding: 0 8px; }
 .fleet-page .fleet-sidebar-note { margin-top: auto; padding: 24px 8px 0; color: var(--fleet-caption); }
 .fleet-page .fleet-sidebar-note > span { display: none; }
 .fleet-page .fleet-sidebar-note strong { font-size: .78em; font-weight: 400; }
@@ -145,6 +161,8 @@
 .fleet-page .fleet-input-form > .fleet-muted { margin-top: 8px; }
 .fleet-page .fleet-danger-actions { display: flex; gap: 8px; padding: 14px 14px 0; margin-top: auto; }
 .fleet-page .fleet-danger-actions .fleet-button { font-size: .8em; flex: 1; }
+.fleet-page .fleet-record-actions { display: flex; padding: 8px 14px 0; }
+.fleet-page .fleet-record-actions .fleet-button { flex: 1; font-size: .8em; }
 :where(.fleet-page) :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { display: block; width: 100%; min-width: 0; padding: 7px 9px; background: var(--dsw-specific-input-major, var(--fleet-bg)); color: var(--fleet-text); border: 1px solid var(--fleet-strong-line); border-radius: var(--fleet-radius); }
 :where(.fleet-page) textarea { resize: vertical; max-height: 260px; min-height: 70px; }
 :where(.fleet-page) :is(input, textarea)::placeholder { color: var(--fleet-caption); }
@@ -173,6 +191,7 @@
 :where(.fleet-page) .fleet-modal h2 { font-size: 1.1em; overflow-wrap: anywhere; }
 :where(.fleet-page) .fleet-modal p { margin: 10px 0 20px; color: var(--fleet-muted); font-size: .9em; line-height: 1.6; }
 :where(.fleet-page) .fleet-modal > div { display: flex; justify-content: flex-end; gap: 10px; }
+:where(.fleet-page) .fleet-modal-list { margin: -8px 0 20px; padding-left: 18px; display: grid; gap: 6px; color: var(--fleet-muted); font-size: .85em; line-height: 1.55; overflow-wrap: anywhere; }
 .fleet-page .fleet-import-safety { color: var(--fleet-muted); font-size: .85em; line-height: 1.65; padding-bottom: 14px; }
 .fleet-page .fleet-import input[type="file"] { font-size: .9em; padding: 8px; overflow: hidden; }
 .fleet-page .fleet-import input[type="file"]::file-selector-button { background: var(--fleet-selected); color: var(--fleet-text); border: 0; border-radius: var(--dsw-radius-xs, 4px); padding: 5px 7px; margin-right: 7px; cursor: pointer; font: inherit; }

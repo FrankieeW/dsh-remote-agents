@@ -31,7 +31,7 @@ export function ChatHeader({ session, summary, provider, machine, busy, onClose,
   return <header className="agent-chat-header">
     <div className="agent-chat-title-row">
       <div className="agent-chat-crumbs" title={cwd}>
-        {session?.machineId && session.machineId !== "local" && <span className="agent-chat-host" title="Remote SSH workspace">SSH · {machine?.name || session.machineId}</span>}
+        {session?.machineId && session.machineId !== "local" && <span className="agent-chat-host" title={machine?.removedAt ? "This machine was removed; restore or re-add it in Machines & projects to continue" : "Remote SSH workspace"}>SSH · {machine?.name || session.machineId}{machine?.removedAt ? " (removed)" : ""}</span>}
         {cwd && <><span className="agent-chat-crumb">{basename(cwd)}</span><span className="agent-chat-crumb-sep" aria-hidden="true">/</span></>}
         <h2 className="agent-chat-crumb is-current"><AgentLogo provider={provider} size={16} /><span>{name}</span></h2>
         {status && status.label !== "Idle" && <span className="agent-chat-status" data-state={status.state}>

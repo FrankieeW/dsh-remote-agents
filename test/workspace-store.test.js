@@ -18,3 +18,39 @@ test('a late catalog cannot hide a created session or reopen a closed session, w
     ]);
   } finally { store.dispose(); }
 });
+
+test('adding an SSH host sends the destination and verification choice, then reloads machines', async () => {
+  const calls = [];
+  const store = createWorkspaceStore(async (endpoint, payload) => {
+    calls.push([endpoint, payload]);
+    return endpoint === 'workspaceCatalog' ? { machines: [], workspaces: [] } : { id: 'm1' };
+  });
+  assert.deepEqual(await store.addSSHHost('u@box', { verify: true }), { id: 'm1' });
+  await store.addSSHHost('u@box', { verify: false });
+  assert.deepEqual(calls, [
+    ['addMachine', { target: 'u@box', verify: true }], ['workspaceCatalog', undefined],
+    ['addMachine', { target: 'u@box', verify: false }], ['workspaceCatalog', undefined],
+  ]);
+});
+
+test('machine labels wait for a successful catalog load', async () => {
+  let offline = true;
+  const store = createWorkspaceStore(async (endpoint) => {
+    if (endpoint !== 'workspaceCatalog') return { sessions: [], providers: [] };
+    if (offline) throw new Error('offline');
+    return { machines: [{ id: 'local', name: 'Local', type: 'local' }], workspaces: [] };
+  });
+  assert.equal(store.getSnapshot().machinesLoaded, false);
+  await store.loadWorkspaces();
+  assert.equal(store.getSnapshot().machinesLoaded, false);
+  offline = false;
+  await store.loadWorkspaces();
+  assert.equal(store.getSnapshot().machinesLoaded, true);
+});
+
+test('SSH config suggestions come from the host', async () => {
+  const calls = [];
+  const store = createWorkspaceStore(async (endpoint, payload) => { calls.push([endpoint, payload]); return { hosts: [], warnings: [] }; });
+  assert.deepEqual(await store.sshConfigHosts(), { hosts: [], warnings: [] });
+  assert.deepEqual(calls, [['sshConfigHosts', undefined]]);
+});

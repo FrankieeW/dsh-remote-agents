@@ -1,5 +1,7 @@
 import { FloatingPanel } from "./floating-panel.jsx";
 import React, { useEffect, useId, useRef, useState } from "react";
+import { activeMachines, canSaveUntested, machineAddress } from "./machines.js";
+import { SshHostOptions, useSshHosts } from "./ssh-hosts.jsx";
 import {
   Button, IconArchiveCheckOutlineRegular, IconArchiveOffOutlineRegular, IconCloseFillRegular, IconFolderCloseRegular,
   IconProjectAddOutlineRegular, IconQueueOutlineRegular, IconSearchOutlineRegular, IconSlidersTwoOutlineRegular,
@@ -30,12 +32,16 @@ function ViewOptions({ layout, filter, onLayout, onFilter }) {
     </Tooltip>} />;
 }
 
+const machineLabel = (machine) => [machine.name, machine.type === "ssh" && machineAddress(machine),
+  machine.lastCheck?.ok === false && "last test failed"].filter(Boolean).join(" · ");
+
 /** Adopts an absolute host directory; the browser cannot browse the Host filesystem itself. */
-function AddWorkspace({ adding, onAdd, machines = [{ id: "local", name: "Local", type: "local" }], browseDirectories, addSSHHost }) {
+function AddWorkspace({ adding, onAdd, machines = [{ id: "local", name: "Local", type: "local" }], browseDirectories, addSSHHost, sshConfigHosts, onManageMachines }) {
   const [open, setOpen] = useState(false);
   const [path, setPath] = useState("");
   const [machineId, setMachineId] = useState("local");
   const [host, setHost] = useState("");
+  const [untested, setUntested] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [invalid, setInvalid] = useState("");
   const [listing, setListing] = useState(null);
@@ -43,6 +49,7 @@ function AddWorkspace({ adding, onAdd, machines = [{ id: "local", name: "Local",
   const [selected, setSelected] = useState(-1);
   const inputId = useId();
   const container = useRef(null);
+  const suggestions = useSshHosts(sshConfigHosts, open && machineId === "new-ssh");
   const close = () => { setOpen(false); setInvalid(""); };
   useEffect(() => {
     if (!open) return;
@@ -73,10 +80,12 @@ function AddWorkspace({ adding, onAdd, machines = [{ id: "local", name: "Local",
       if (await onAdd(directory, machineId)) { setPath(""); close(); }
     } catch (cause) { setInvalid(cause.message || 'Could not add workspace'); }
   }
-  async function connect() {
-    setConnecting(true); setInvalid("");
-    try { const machine = await addSSHHost(host.trim()); setMachineId(machine.id); setPath('~/'); }
-    catch (cause) { setInvalid(cause.message || 'Could not add SSH host'); }
+  /** Tests SSH before saving; a failed test can be overridden explicitly. */
+  async function connect(verify) {
+    const target = host.trim();
+    setConnecting(true); setInvalid(""); setUntested("");
+    try { const machine = await addSSHHost(target, { verify }); setHost(""); setMachineId(machine.id); setPath('~/'); }
+    catch (cause) { setInvalid(cause.message || 'Could not add SSH host'); if (verify && canSaveUntested(cause.code)) setUntested(target); }
     finally { setConnecting(false); }
   }
   function complete(index) { const entry = listing?.entries[index]; if (entry) { setPath(entry.path); setSelected(-1); } }
@@ -90,14 +99,17 @@ function AddWorkspace({ adding, onAdd, machines = [{ id: "local", name: "Local",
       <label htmlFor={`${inputId}-machine`}>Machine</label>
       <select id={`${inputId}-machine`} aria-label="Workspace machine" value={machineId} disabled={adding || connecting}
         onChange={event => { setMachineId(event.target.value); setPath(event.target.value === 'local' ? '' : '~/'); setInvalid(''); }}>
-        {machines.map(machine => <option key={machine.id} value={machine.id}>{machine.name}{machine.type === 'ssh' ? ' · SSH' : ''}</option>)}
+        {activeMachines(machines).map(machine => <option key={machine.id} value={machine.id}>{machineLabel(machine)}</option>)}
         {addSSHHost && <option value="new-ssh">Add SSH host…</option>}
       </select>
       {machineId === 'new-ssh' ? <>
-        <label htmlFor={`${inputId}-host`}>SSH alias or hostname</label>
-        <input id={`${inputId}-host`} aria-label="SSH host" value={host} onChange={event => setHost(event.target.value)} placeholder="dev-box" spellCheck={false} />
-        <Button size="sm" variant="outline" disabled={!host.trim() || connecting} onClick={connect}>{connecting ? 'Adding…' : 'Use SSH host'}</Button>
-        <p className="agent-workspace-directory-hint">Uses your SSH config and existing known_hosts.</p>
+        <label htmlFor={`${inputId}-host`}>SSH destination</label>
+        <input id={`${inputId}-host`} aria-label="SSH destination" value={host} onChange={event => { setHost(event.target.value); setUntested(""); }}
+          placeholder="dev-box or user@host:2222" spellCheck={false} autoCapitalize="none" list={`${inputId}-ssh-hosts`} />
+        <SshHostOptions id={`${inputId}-ssh-hosts`} hosts={suggestions.hosts} />
+        <Button size="sm" variant="outline" disabled={!host.trim() || connecting} onClick={() => connect(true)}>{connecting ? 'Testing…' : 'Test & add'}</Button>
+        {untested && untested === host.trim() && <Button size="sm" variant="ghost" disabled={connecting} onClick={() => connect(false)}>Add without testing</Button>}
+        <p className="agent-workspace-directory-hint">Uses your SSH config, keys and known_hosts. Passwords are not supported.</p>
       </> : <>
         <label htmlFor={inputId}>{machineId === 'local' ? 'Project directory on the Host' : 'Project directory on the SSH host'}</label>
         <input id={inputId} aria-label="Workspace directory" placeholder="/path/to/project" value={path} readOnly={adding} autoFocus
@@ -118,6 +130,7 @@ function AddWorkspace({ adding, onAdd, machines = [{ id: "local", name: "Local",
         <p className="agent-workspace-directory-hint">Tab to complete · ↑ ↓ to choose · Enter to add</p>
       </>}
       {invalid && <p className="agent-workspace-add-error" role="alert">{invalid}</p>}
+      {onManageMachines && <button type="button" className="agent-workspace-manage" onClick={() => { close(); onManageMachines(); }}>Manage machines…</button>}
       <div className="agent-workspace-add-actions">
         <Button size="sm" variant="ghost" onClick={close}>Cancel</Button>
         <Button size="sm" variant="primary" type="submit" disabled={adding || connecting || machineId === 'new-ssh' || !path.trim()}>{adding ? "Adding…" : "Add"}</Button>
@@ -127,7 +140,7 @@ function AddWorkspace({ adding, onAdd, machines = [{ id: "local", name: "Local",
 }
 
 /** Native section header: label, expanding search, view options and add-workspace. */
-export function WorkspaceHeader({ query, onQuery, layout, filter, onLayout, onFilter, adding, onAdd, machines, browseDirectories, addSSHHost }) {
+export function WorkspaceHeader({ query, onQuery, layout, filter, onLayout, onFilter, adding, onAdd, machines, browseDirectories, addSSHHost, sshConfigHosts, onManageMachines }) {
   const [searching, setSearching] = useState(false);
   const input = useRef(null);
   const expanded = searching || query !== "";
@@ -151,7 +164,7 @@ export function WorkspaceHeader({ query, onQuery, layout, filter, onLayout, onFi
     </div>
     <div className="agent-workspace-header-actions" hidden={expanded}>
       <ViewOptions layout={layout} filter={filter} onLayout={onLayout} onFilter={onFilter} />
-      <AddWorkspace adding={adding} onAdd={onAdd} machines={machines} browseDirectories={browseDirectories} addSSHHost={addSSHHost} />
+      <AddWorkspace adding={adding} onAdd={onAdd} machines={machines} browseDirectories={browseDirectories} addSSHHost={addSSHHost} sshConfigHosts={sshConfigHosts} onManageMachines={onManageMachines} />
     </div>
   </header>;
 }

@@ -1,11 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
+import { machineAddress } from "./machines.js";
+
+export { machineAddress };
 
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_TOTAL_BYTES = 2 * MAX_FILE_BYTES;
-
-export function machineAddress(machine) {
-  return `${machine.user ? `${machine.user}@` : ""}${machine.host || "SSH"}${machine.port ? `:${machine.port}` : ""}`;
-}
 
 function fileBuffer(file) {
   if (typeof file.arrayBuffer === "function") return file.arrayBuffer();

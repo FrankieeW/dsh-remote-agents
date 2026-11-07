@@ -143,3 +143,28 @@ test("client registers DSH slots and handles terminal diagnostics and stopped st
     Object.assign(globalThis, old);
   }
 });
+
+test("the sidebar opens machine management and the host routes machine endpoints", async () => {
+  const { ENDPOINTS } = await import("../src/rpc.js");
+  for (const endpoint of ["addMachine", "updateMachine", "removeMachine", "restoreMachine", "probe", "forgetAgent"])
+    assert.ok(ENDPOINTS.includes(endpoint), endpoint);
+  const result = await build({ entryPoints: ["src/client-entry.jsx"], bundle: true, write: false, platform: "browser", format: "cjs", jsx: "automatic", loader: { ".css": "text" }, external: ["react", "react/jsx-runtime"], alias: PRIMITIVES_ALIAS });
+  const dom = new JSDOM("<!doctype html><html><head></head><body></body></html>");
+  const mod = { exports: {} };
+  vm.runInNewContext(result.outputFiles[0].text, { module: mod, exports: mod.exports, require: createRequire(import.meta.url), document: dom.window.document, setTimeout, clearTimeout, console, crypto: globalThis.crypto, AbortController });
+  const registrations = [], calls = [], cleanup = [];
+  const ctx = {
+    slots: { inject: (_slot, fn) => { const value = fn(); if (value?.[Symbol.iterator]) for (const effect of value) void effect; }, register: (meta, Component) => registrations.push({ meta, Component }) },
+    effect: (fn) => cleanup.push(fn()),
+    layout: { beginNavigation: () => new AbortController().signal, selectPanel: (id) => calls.push(id) },
+    connection: { rpc: { call: async () => ({ ok: true, value: { machines: [], workspaces: [], sessions: [], providers: [], pluginVersion: "unused" } }) } },
+  };
+  try {
+    mod.exports.apply(ctx);
+    registrations.find((r) => r.meta.name === "sidebar.workspaces").meta.inject().onManageMachines();
+    assert.deepEqual(calls, ["remote-agents"]);
+  } finally {
+    cleanup.forEach((fn) => fn?.());
+    dom.window.close();
+  }
+});

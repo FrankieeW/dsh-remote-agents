@@ -14,6 +14,12 @@ use tokio::{
 pub struct Host {
     pub machine: Value,
 }
+/// The outcome of a finished command; `code` is `None` after a signal.
+pub struct Captured {
+    pub code: Option<i32>,
+    pub stdout: Vec<u8>,
+    pub stderr: String,
+}
 pub fn valid_ssh(m: &Value) -> bool {
     let h = s(m, "host");
     let host_ok = !h.is_empty()
@@ -35,6 +41,25 @@ pub fn valid_ssh(m: &Value) -> bool {
         .get("port")
         .is_none_or(|v| v.as_u64().is_some_and(|p| (1..=65535).contains(&p)));
     host_ok && user_ok && port_ok
+}
+/// A remote command line that runs `script` under POSIX sh. sshd hands the
+/// command to the account's login shell (bash, zsh, fish …); quoting the whole
+/// script as one word keeps that shell from interpreting it, for example zsh
+/// aborting on globs that match nothing.
+pub fn remote_script(script: &str) -> String {
+    format!("exec /bin/sh -c {}", quote(script))
+}
+/// The remote script that runs `file args…` in `cwd` with common user tool paths.
+pub fn remote_exec(file: &str, args: &[String], cwd: &str) -> Result<String> {
+    Ok(remote_script(&format!(
+        "export PATH=\"$HOME/.local/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH\"; cd {} && exec {}",
+        shell_path(cwd)?,
+        std::iter::once(file)
+            .chain(args.iter().map(String::as_str))
+            .map(quote)
+            .collect::<Vec<_>>()
+            .join(" ")
+    )))
 }
 pub fn shell_path(path: &str) -> Result<String> {
     if path == "~" {
@@ -72,6 +97,7 @@ impl Host {
         ]
         .map(String::from)
         .to_vec();
+        a.extend(crate::ssh_mux::options(&self.machine));
         if let Some(u) = self.machine.get("user") {
             a.extend(["-l".into(), u.as_str().unwrap().into()])
         }
@@ -83,15 +109,7 @@ impl Host {
     }
     pub fn command(&self, file: &str, args: &[String], cwd: Option<&str>) -> Result<Command> {
         let mut c = if self.remote() {
-            let command = format!(
-                "export PATH=\"$HOME/.local/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH\"; cd {} && exec {}",
-                shell_path(cwd.unwrap_or("~"))?,
-                std::iter::once(file)
-                    .chain(args.iter().map(String::as_str))
-                    .map(quote)
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            );
+            let command = remote_exec(file, args, cwd.unwrap_or("~"))?;
             let mut c = Command::new("ssh");
             c.args(self.ssh_args(&command)?);
             c
@@ -135,6 +153,26 @@ impl Host {
         max: usize,
         input: Option<Vec<u8>>,
     ) -> Result<String> {
+        let c = self.capture(file, args, cwd, seconds, max, input).await?;
+        if c.code != Some(0) {
+            return err(
+                &c.code.unwrap_or(-1).to_string(),
+                "CLI command failed; check its installation, authentication and SSH connection",
+            );
+        }
+        String::from_utf8(c.stdout).map_err(|_| Error::new("INVALID_UTF8", "CLI output is not UTF-8"))
+    }
+    /// Runs a command and returns its exit status, stdout and stderr. Only
+    /// spawn failures, timeouts and oversized output are errors.
+    pub async fn capture(
+        &self,
+        file: &str,
+        args: &[String],
+        cwd: Option<&str>,
+        seconds: u64,
+        max: usize,
+        input: Option<Vec<u8>>,
+    ) -> Result<Captured> {
         let mut c = self.command(file, args, cwd)?;
         let mut child = c
             .stdout(Stdio::piped())
@@ -171,22 +209,40 @@ impl Host {
             if o.len() > max || e.len() > max {
                 return err("OUTPUT_LIMIT", "Command output exceeded limit");
             }
-            if !status.success() {
-                return err(
-                    &status.code().unwrap_or(-1).to_string(),
-                    "CLI command failed; check its installation, authentication and SSH connection",
-                );
+            // A process that exits early closes stdin; only a successful run must have read it.
+            if status.success() {
+                write?;
             }
-            write?;
-            String::from_utf8(o).map_err(|_| Error::new("INVALID_UTF8", "CLI output is not UTF-8"))
+            Ok(Captured {
+                code: status.code(),
+                stdout: o,
+                stderr: String::from_utf8_lossy(&e).into_owned(),
+            })
         })
         .await;
         if output.is_err() {
             kill_group(pid);
             let _ = child.kill().await;
+            if self.remote() {
+                self.retire_shared_connection();
+            }
             return err("TIMEOUT", "CLI operation timed out");
         }
         output.unwrap()
+    }
+    /// Best effort and in the background: a timed-out command may mean the
+    /// shared connection is dead, so later commands should open a new one.
+    fn retire_shared_connection(&self) {
+        let Some(args) = crate::ssh_mux::stop_args(&self.machine) else {
+            return;
+        };
+        let mut c = Command::new("ssh");
+        c.args(args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).kill_on_drop(true);
+        if let Ok(mut child) = c.spawn() {
+            tokio::spawn(async move {
+                let _ = tokio::time::timeout(Duration::from_secs(5), child.wait()).await;
+            });
+        }
     }
     pub async fn shell(&self, command: &str, max: usize) -> Result<String> {
         if self.remote() {
@@ -194,7 +250,7 @@ impl Host {
                 machine: json!({"type":"local"}),
             };
             local
-                .run("ssh", &self.ssh_args(command)?, None, 15, max)
+                .run("ssh", &self.ssh_args(&remote_script(command))?, None, 15, max)
                 .await
         } else {
             self.run("sh", &["-c".into(), command.into()], None, 15, max)
@@ -316,6 +372,30 @@ pub fn kill_group(pid: Option<u32>) {
     if let Some(pid) = pid {
         unsafe {
             libc::kill(-(pid as i32), libc::SIGTERM);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    /// What sshd does with a command line: `<login shell> -c <line>`.
+    fn via(shell: &[&str], line: &str) -> Option<String> {
+        let out = std::process::Command::new(shell[0]).args(&shell[1..]).arg("-c").arg(line).output().ok()?;
+        Some(String::from_utf8_lossy(&out.stdout).into_owned())
+    }
+    #[test]
+    fn remote_scripts_run_under_posix_sh_whatever_the_login_shell() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = format!(
+            "cd {} && for p in ./nomatch-* ./.[!.]*; do printf '%s|' \"$p\"; done; echo 'it'\"'\"'s'",
+            quote(dir.path().to_str().unwrap())
+        );
+        let line = remote_script(&script);
+        let expected = "./nomatch-*|./.[!.]*|it's\n";
+        assert_eq!(via(&["/bin/sh"], &line).as_deref(), Some(expected));
+        if std::path::Path::new("/bin/zsh").exists() {
+            assert_eq!(via(&["/bin/zsh", "-f"], &line).as_deref(), Some(expected), "zsh must not expand or abort");
         }
     }
 }

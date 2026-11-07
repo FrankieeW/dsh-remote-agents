@@ -77,6 +77,22 @@ export function groupWorkspaceSessions(workspaces, nativeState, externalSessions
   return groups;
 }
 
+/**
+ * Names the machine of remote history groups and marks removed or unknown
+ * machines, which get no remote actions. Waits for a loaded machine catalog.
+ */
+export function labelMachines(groups, machines) {
+  if (!Array.isArray(machines)) return groups;
+  const byId = new Map(machines.map((machine) => [machine.id, machine]));
+  return groups.map((group) => {
+    const id = group.workspace.machineId;
+    if (!group.unregistered || !id || id === "local") return group;
+    const machine = byId.get(id);
+    const machineState = !machine ? "missing" : machine.removedAt ? "removed" : undefined;
+    return { ...group, workspace: { ...group.workspace, machineName: machine?.name, machineState } };
+  });
+}
+
 /** Nest each group under its nearest registered path ancestor (segment-aware). */
 export function workspaceForest(groups, nested) {
   const nodes = groups.map((group) => ({ ...group, children: [] }));
@@ -137,7 +153,7 @@ function useOperations() {
 }
 
 /** A root-seat sidebar only: navigation and mutations belong to the plugin owner. */
-export default function WorkspaceSidebar({ useSessions, useSessionStatus, useWorkspaces, store, onCreate, onOpen, onAddWorkspace, onNativeAction, onRemoveWorkspace, nativeSelectedId, externalActive = true, wide = true, expandSidebar }) {
+export default function WorkspaceSidebar({ useSessions, useSessionStatus, useWorkspaces, store, onCreate, onOpen, onAddWorkspace, onNativeAction, onRemoveWorkspace, onManageMachines, nativeSelectedId, externalActive = true, wide = true, expandSidebar }) {
   const nativeState = useSessions(identity);
   const nativeStatuses = useSessionStatus(identity);
   const workspaces = useWorkspaces(identity);
@@ -156,7 +172,8 @@ export default function WorkspaceSidebar({ useSessions, useSessionStatus, useWor
   }, [query, store]);
   const [filter, setFilter] = useState(() => readPreference(FILTER_KEY, FILTERS));
   const [layout, setLayout] = useState(() => readPreference(LAYOUT_KEY, LAYOUTS));
-  const groups = useMemo(() => groupWorkspaceSessions({ ...workspaces, items: [...workspaces.items, ...(catalog.remoteWorkspaces || [])] }, nativeState, catalog.sessions, nativeSelectedId, nativeStatuses), [workspaces, catalog.remoteWorkspaces, nativeState, catalog.sessions, nativeSelectedId, nativeStatuses]);
+  const catalogMachines = catalog.machinesLoaded === false ? undefined : catalog.machines;
+  const groups = useMemo(() => labelMachines(groupWorkspaceSessions({ ...workspaces, items: [...workspaces.items, ...(catalog.remoteWorkspaces || [])] }, nativeState, catalog.sessions, nativeSelectedId, nativeStatuses), catalogMachines), [workspaces, catalog.remoteWorkspaces, nativeState, catalog.sessions, nativeSelectedId, nativeStatuses, catalogMachines]);
   const { error, pending, run } = useOperations();
   const now = useNow();
   if (!wide) {
@@ -186,7 +203,7 @@ export default function WorkspaceSidebar({ useSessions, useSessionStatus, useWor
       onLayout={(value) => { setLayout(value); writePreference(LAYOUT_KEY, value); }}
       onFilter={(value) => { setFilter(value); writePreference(FILTER_KEY, value); }}
       onAdd={(directory, machineId) => run("add", () => onAddWorkspace(directory, machineId))}
-      machines={catalog.machines} browseDirectories={store.browseDirectories} addSSHHost={store.addSSHHost} />
+      machines={catalog.machines} browseDirectories={store.browseDirectories} addSSHHost={store.addSSHHost} sshConfigHosts={store.sshConfigHosts} onManageMachines={onManageMachines} />
     {failure && <p className="agent-workspace-error" role="alert">{message(failure)} <button type="button" onClick={() => store.refresh?.()}>Retry connection</button></p>}
     <button type="button" className="agent-workspace-refresh" onClick={() => store.refresh?.()}>Refresh workspaces & agents</button>
     {loading && <p className="agent-workspace-empty" role="status">Loading sessions…</p>}

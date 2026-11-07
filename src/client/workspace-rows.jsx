@@ -63,10 +63,19 @@ function NewSessionMenu({ title, providers, machineId, loadProviders, busy, onCr
     </Tooltip>} />;
 }
 
+/** The machine tag of a remote group; removed or unknown machines say so. */
+function machineTag(workspace) {
+  if (workspace.machineState === "missing") return "Unknown machine";
+  const name = workspace.machineName || "SSH";
+  return workspace.machineState === "removed" ? `${name} · removed` : name;
+}
+
 export function ProjectRow({ group, expanded, active, contentId, onToggle, providers, loadProviders, updateAgent, updateStatus, updatePlan, onRemoveWorkspace, creating, onCreate }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { path } = group.workspace;
   const title = group.workspace.title || basename(path) || "Other sessions";
+  const remote = group.workspace.machineId && group.workspace.machineId !== "local";
+  const reachable = !group.workspace.machineState;
   const row = <div className={`agent-workspace-heading${menuOpen ? " is-menu-open" : ""}`}>
     <button type="button" className="agent-workspace-collapse" aria-expanded={expanded} aria-controls={contentId} onClick={onToggle}>
       <span className={`agent-workspace-slot agent-workspace-folder${active ? " is-active" : ""}`} aria-hidden="true">
@@ -76,13 +85,13 @@ export function ProjectRow({ group, expanded, active, contentId, onToggle, provi
         <IconTriangleRightFillRegular className={`agent-workspace-arrow${expanded ? " is-open" : ""}`} />
       </span>
       <span className="agent-workspace-title">{title}</span>
-      {group.workspace.machineId && group.workspace.machineId !== "local" && <span className="agent-workspace-tag" title={group.workspace.machineName || group.workspace.machineId}>{group.workspace.machineName || "SSH"}</span>}
+      {remote && <span className="agent-workspace-tag" title={reachable ? group.workspace.machineName || group.workspace.machineId : "Restore or re-add this machine in Machines & projects to continue these conversations"}>{machineTag(group.workspace)}</span>}
       {group.unregistered && <span className="agent-workspace-tag">History</span>}
     </button>
     {path && <span className="agent-workspace-row-actions">
-      {group.workspace.machineId && group.workspace.machineId !== "local" && updateAgent && <RemoteAgentManager machineId={group.workspace.machineId} machineName={group.workspace.machineName} loadProviders={loadProviders} updateAgent={updateAgent} updateStatus={updateStatus} updatePlan={updatePlan} onOpenChange={setMenuOpen} />}
+      {remote && reachable && updateAgent && <RemoteAgentManager machineId={group.workspace.machineId} machineName={group.workspace.machineName} loadProviders={loadProviders} updateAgent={updateAgent} updateStatus={updateStatus} updatePlan={updatePlan} onOpenChange={setMenuOpen} />}
       {!group.unregistered && onRemoveWorkspace && <button type="button" className="agent-workspace-row-button" aria-label={`Remove workspace ${title}`} title="Remove workspace registration" onClick={() => onRemoveWorkspace(group)}>×</button>}
-      <NewSessionMenu title={title} providers={providers} machineId={group.workspace.machineId} loadProviders={loadProviders} busy={creating} onCreate={onCreate} onOpenChange={setMenuOpen} />
+      {reachable && <NewSessionMenu title={title} providers={providers} machineId={group.workspace.machineId} loadProviders={loadProviders} busy={creating} onCreate={onCreate} onOpenChange={setMenuOpen} />}
     </span>}
   </div>;
   if (!path) return row;

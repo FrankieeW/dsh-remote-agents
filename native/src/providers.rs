@@ -1,4 +1,4 @@
-use crate::{common::*, hosts::Host, protocol::Wire, settings};
+use crate::{common::*, hosts::Host, machines::machine_key, protocol::Wire, settings};
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
@@ -10,6 +10,16 @@ use tokio::sync::Mutex;
 pub struct Found {
     pub public: Value,
     pub executable: Option<String>,
+}
+/// Inspections are cached per machine and address, so a result from an
+/// address that changed meanwhile is never served for the new one.
+fn cache_key(host: &Host) -> String {
+    format!("{}\n{}", s(&host.machine, "id"), machine_key(&host.machine))
+}
+/// An update that is planned, or one that is already running.
+pub enum Prepared {
+    Running(Value),
+    Ready { provider: String, plan: Value },
 }
 pub struct Registry {
     pub config: Value,
@@ -110,7 +120,7 @@ impl Registry {
         Found { public, executable }
     }
     pub async fn inspect_host(&self, host: &Host, refresh: bool) -> Vec<Found> {
-        let key = s(&host.machine, "id").to_owned();
+        let key = cache_key(host);
         {
             let cache = self.cache.lock().await;
             if !refresh {
@@ -172,7 +182,7 @@ impl Registry {
     }
     pub async fn options(&self, host: &Host, session: &Value, refresh: bool) -> Result<Value> {
         if refresh {
-            self.cache.lock().await.remove(s(&host.machine, "id"));
+            self.cache.lock().await.remove(&cache_key(host));
         }
         let provider = s(session, "provider");
         let file = self.resolve(host, provider).await?;
@@ -433,19 +443,52 @@ impl Registry {
         plan["args"] = json!(args);
         Ok(plan)
     }
-    pub async fn start_update(self: &Arc<Self>, host: Host, p: &Value) -> Result<Value> {
+    /// Drops cached CLI inspections after a machine's address changes or it is removed.
+    pub async fn forget_machine(&self, machine: &str) {
+        self.cache
+            .lock()
+            .await
+            .retain(|key, _| key.split('\n').next() != Some(machine));
+    }
+    fn running_job<'a>(jobs: &'a HashMap<String, Value>, machine: &str, provider: Option<&str>) -> Option<&'a Value> {
+        jobs.values().find(|j| {
+            j["machineId"] == machine
+                && provider.is_none_or(|p| j["provider"] == p)
+                && j["status"] == "running"
+        })
+    }
+    pub async fn updating(&self, machine: &str, provider: &str) -> bool {
+        Self::running_job(&*self.jobs.lock().await, machine, Some(provider)).is_some()
+    }
+    pub async fn machine_updating(&self, machine: &str) -> bool {
+        Self::running_job(&*self.jobs.lock().await, machine, None).is_some()
+    }
+    /// Freshly inspected CLI availability, without capabilities or job state.
+    pub async fn summary(&self, host: &Host) -> Value {
+        json!(
+            self.inspect_host(host, true)
+                .await
+                .into_iter()
+                .map(|found| {
+                    let mut v = json!({});
+                    for k in ["id", "label", "available", "version", "reason"] {
+                        if let Some(x) = found.public.get(k) {
+                            v[k] = x.clone()
+                        }
+                    }
+                    v
+                })
+                .collect::<Vec<_>>()
+        )
+    }
+    /// Remote planning for an update; runs without holding the engine gate.
+    pub async fn prepare_update(&self, host: &Host, p: &Value) -> Result<Prepared> {
         let provider = required(p, "provider", 32)?;
-        {
-            let jobs = self.jobs.lock().await;
-            if let Some(j) = jobs.values().find(|j| {
-                j["machineId"] == host.machine["id"]
-                    && j["provider"] == provider
-                    && j["status"] == "running"
-            }) {
-                return Ok(j.clone());
-            }
+        let machine = s(&host.machine, "id");
+        if let Some(job) = Self::running_job(&*self.jobs.lock().await, machine, Some(&provider)) {
+            return Ok(Prepared::Running(job.clone()));
         }
-        let plan = self.plan(&host, &provider, true).await?;
+        let plan = self.plan(host, &provider, true).await?;
         if plan["canUpdate"] != true {
             return err("UNSUPPORTED", s(&plan, "reason"));
         }
@@ -455,9 +498,20 @@ impl Registry {
                 "Update plan changed; refresh and review the target again",
             );
         }
+        Ok(Prepared::Ready { provider, plan })
+    }
+    /// Registers and starts a prepared update; called while new turns are excluded.
+    pub async fn start_update(self: &Arc<Self>, host: Host, prepared: Prepared) -> Result<Value> {
+        let (provider, plan) = match prepared {
+            Prepared::Running(job) => return Ok(job),
+            Prepared::Ready { provider, plan } => (provider, plan),
+        };
         let job = json!({"id":id(),"machineId":host.machine["id"],"provider":provider,"status":"running","beforeVersion":plan["beforeVersion"],"targetVersion":plan["targetVersion"],"method":plan["method"],"startedAt":now()});
         {
             let mut jobs = self.jobs.lock().await;
+            if let Some(running) = Self::running_job(&jobs, s(&host.machine, "id"), Some(&provider)) {
+                return Ok(running.clone());
+            }
             if jobs.len() >= 32 {
                 if let Some(old) = jobs
                     .iter()
@@ -484,7 +538,7 @@ impl Registry {
                 .run(s(&plan, "executable"), &args, None, 120, 512 * 1024)
                 .await;
             let after = registry.inspect(&host, &provider).await;
-            registry.cache.lock().await.remove(s(&host.machine, "id"));
+            registry.cache.lock().await.remove(&cache_key(&host));
             let mut jobs = registry.jobs.lock().await;
             if let Some(job) = jobs.get_mut(&job_id) {
                 let good = result.is_ok()

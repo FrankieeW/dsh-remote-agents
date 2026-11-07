@@ -2,7 +2,8 @@ import { createPoller } from "./polling.js";
 
 /** One plugin lifetime owns catalog polling, drafts and uncertain-send receipts. */
 export function createWorkspaceStore(api) {
-  let snapshot = { configRevision: 0, machines: [{ id: "local", name: "Local", type: "local" }], remoteWorkspaces: [], sessions: [], providers: [], selectedId: "", drafts: {}, loading: true, error: "", workspaceError: "", workspaceLoading: true };
+  // `machinesLoaded` turns true only after a successful catalog load; until then `machines` is a placeholder.
+  let snapshot = { configRevision: 0, machines: [{ id: "local", name: "Local", type: "local" }], machinesLoaded: false, remoteWorkspaces: [], sessions: [], providers: [], selectedId: "", drafts: {}, loading: true, error: "", workspaceError: "", workspaceLoading: true };
   const listeners = new Set();
   const completedUpdates = new Set();
   let stopped = false;
@@ -30,12 +31,13 @@ export function createWorkspaceStore(api) {
     },
     loadProviders: (machineId, refresh = false) => api("chatProviders", { machineId, refresh }),
     browseDirectories: (machineId, path) => api("workspaceBrowse", { machineId, path }),
+    sshConfigHosts: () => api("sshConfigHosts"),
     async loadWorkspaces() {
       try {
         const value = await api("workspaceCatalog");
         if (!Array.isArray(value?.machines) || !Array.isArray(value?.workspaces)) throw new Error("The workspace catalog response is invalid.");
         catalogFailures = 0;
-        if (!stopped) publish({ machines: value.machines, remoteWorkspaces: value.workspaces, workspaceLoading: false, workspaceError: "" });
+        if (!stopped) publish({ machines: value.machines, machinesLoaded: true, remoteWorkspaces: value.workspaces, workspaceLoading: false, workspaceError: "" });
       } catch (error) {
         catalogFailures++;
         if (!stopped) publish({ workspaceLoading: false, workspaceError: error.message || "Could not load workspaces" });
@@ -53,8 +55,9 @@ export function createWorkspaceStore(api) {
       await api("workspaceAdd", { machineId, path });
       await store.loadWorkspaces();
     },
-    async addSSHHost(host) {
-      const machine = await api("addMachine", { name: host, host });
+    /** Adds an SSH destination; with `verify`, the host saves it only after SSH accepts a command. */
+    async addSSHHost(target, { verify = true } = {}) {
+      const machine = await api("addMachine", { target, verify });
       await store.loadWorkspaces();
       return machine;
     },

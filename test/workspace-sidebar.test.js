@@ -24,7 +24,7 @@ async function mount(options = {}) {
   vm.runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: createRequire(import.meta.url), console, setTimeout, clearTimeout, localStorage: dom.window.localStorage });
   const Component = module.exports.default;
   const listeners = new Set();
-  const state = { machines: options.machines, remoteWorkspaces: options.remoteWorkspaces, sessions: options.sessions || [external('e1')], providers: options.providers || [{ id: 'omp', available: true }, { id: 'claude', available: false, reason: 'Claude is not installed' }], selectedId: options.selectedId || null, loading: false, error: null };
+  const state = { machines: options.machines, machinesLoaded: options.machinesLoaded, remoteWorkspaces: options.remoteWorkspaces, sessions: options.sessions || [external('e1')], providers: options.providers || [{ id: 'omp', available: true }, { id: 'claude', available: false, reason: 'Claude is not installed' }], selectedId: options.selectedId || null, loading: false, error: null };
   const nativeRows = options.nativeRows || [native('n1')];
   const nativeState = { ids: nativeRows.map((row) => row.id), byId: Object.fromEntries(nativeRows.map((row) => [row.id, row])), phase: 'ready' };
   let nativeStatuses = options.nativeStatuses || new Map();
@@ -390,5 +390,63 @@ test('workspace removal requires a concrete registration confirmation and preser
     assert.match(document.querySelector('[role="alertdialog"]').textContent,/Files and session history are kept/);
     await h.click([...document.querySelectorAll('button')].find(b=>b.textContent==='Remove registration'));
     assert.deepEqual(removed,['w1']);assert.ok(h.row('External e1'));
+  }finally{await h.cleanup();}
+});
+
+test('the sidebar tests a new SSH destination before saving it and links to machine management',async()=>{
+  const sent=[],managed=[];
+  const h=await mount({machines:[{id:'local',name:'Local',type:'local'}],store:{browseDirectories:async()=>({base:'/home/me',entries:[]}),addSSHHost:async(target,options)=>{sent.push([target,JSON.parse(JSON.stringify(options))]);if(options.verify)throw new Error('The host key of box is not trusted yet. Run `ssh box` once in a terminal to verify it, then test again.');return{id:'ssh-9',name:target,type:'ssh',host:target};}},props:{onManageMachines:()=>managed.push(true)}});
+  const button=text=>[...document.querySelectorAll('button')].find(b=>b.textContent===text);
+  try{
+    await h.click(document.querySelector('[aria-label="Add workspace"]'));
+    await act(async()=>{const node=document.querySelector('select[aria-label="Workspace machine"]');node.value='new-ssh';node.dispatchEvent(new h.dom.window.Event('change',{bubbles:true}));});
+    await h.type('[aria-label="SSH destination"]','box');
+    await h.click(button('Test & add'));
+    assert.match(document.querySelector('.agent-workspace-add-error').textContent,/ssh box/);
+    await h.click(button('Add without testing'));
+    assert.deepEqual(sent,[['box',{verify:true}],['box',{verify:false}]]);
+    await h.click(button('Manage machines…'));
+    assert.equal(managed.length,1);
+  }finally{await h.cleanup();}
+});
+
+test('history from removed or unknown machines is labelled and offers no remote actions',async()=>{
+  const machines=[{id:'local',name:'Local',type:'local'},{id:'gone',name:'Old box',type:'ssh',host:'old',removedAt:'2026-01-01T00:00:00.000Z'},{id:'ssh-1',name:'Dev',type:'ssh',host:'dev',user:'me'}];
+  const h=await mount({machines,sessions:[external('r1',{machineId:'gone',cwd:'/srv/app'}),external('r2',{machineId:'missing',cwd:'/srv/other'})],store:{loadProviders:async()=>[],updateAgent:async()=>({}),updateStatus:async()=>({}),updatePlan:async()=>({})}});
+  try{
+    const removed=h.group('/srv/app');
+    assert.match(removed.textContent,/Old box · removed/);
+    assert.equal(removed.querySelector('[aria-label^="New session in"]'),null);
+    assert.equal(removed.querySelector('[aria-label^="Manage remote CLIs"]'),null);
+    assert.ok(h.row('External r1'));
+    const unknown=h.group('/srv/other');
+    assert.match(unknown.textContent,/Unknown machine/);
+    assert.equal(unknown.querySelector('[aria-label^="New session in"]'),null);
+    await h.click(document.querySelector('[aria-label="Add workspace"]'));
+    const options=[...document.querySelectorAll('select[aria-label="Workspace machine"] option')].map(o=>o.textContent);
+    assert.ok(options.includes('Dev · me@dev'),options.join());
+    assert.ok(!options.some(o=>o.includes('Old box')),options.join());
+  }finally{await h.cleanup();}
+});
+
+test('remote history keeps its actions until the machine catalog has loaded',async()=>{
+  const h=await mount({machines:[{id:'local',name:'Local',type:'local'}],machinesLoaded:false,sessions:[external('r1',{machineId:'ssh-1',cwd:'/srv/app'})],store:{loadProviders:async()=>[]}});
+  try{
+    const group=h.group('/srv/app');
+    assert.doesNotMatch(group.textContent,/Unknown machine/);
+    assert.ok(group.querySelector('[aria-label^="New session in"]'));
+  }finally{await h.cleanup();}
+});
+
+test('a new SSH host can be picked from the SSH config',async()=>{
+  const h=await mount({machines:[{id:'local',name:'Local',type:'local'}],store:{addSSHHost:async()=>({id:'m2'}),sshConfigHosts:async()=>({hosts:[{alias:'lab',hostName:'lab.example'},{alias:'dev',machineId:'m1'}],warnings:[]})}});
+  try{
+    await h.click(document.querySelector('[aria-label="Add workspace"]'));
+    await act(async()=>{const node=document.querySelector('select[aria-label="Workspace machine"]');node.value='new-ssh';node.dispatchEvent(new h.dom.window.Event('change',{bubbles:true}));});
+    await act(async()=>new Promise(r=>setTimeout(r,0)));
+    const input=document.querySelector('[aria-label="SSH destination"]');
+    const options=[...document.getElementById(input.getAttribute('list')).querySelectorAll('option')];
+    assert.deepEqual(options.map(o=>o.value),['lab']);
+    assert.match(options[0].textContent,/lab\.example/);
   }finally{await h.cleanup();}
 });
