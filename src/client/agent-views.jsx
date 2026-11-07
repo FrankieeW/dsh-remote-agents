@@ -45,6 +45,7 @@ export function AgentViewTabs({ provider, view, onChange, data, idPrefix }) {
           key={tab.id}
           type="button"
           role="tab"
+          data-view={tab.id}
           id={`${idPrefix}-${tab.id}`}
           aria-label={tab.label}
           aria-controls={`${idPrefix}-panel`}
@@ -112,6 +113,7 @@ export function AgentDetailView({ session, view, data, onChat }) {
   return (
     <section
       className="agent-detail-view"
+      data-view={view}
       aria-label={`${profile.name} ${view === 'tasks' ? profile.taskLabel : changes ? 'changes' : 'tools'}`}
     >
       <header>

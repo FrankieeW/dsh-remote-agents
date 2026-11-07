@@ -39,6 +39,12 @@ The implementation was checked against the installed DSH `0.2.2-rc.1` sources:
 
 The plugin uses DSH theme tokens and shared rendering primitives. It does not patch the desktop packages.
 
+## OMP color accents (alpha.2)
+
+OMP views add semantic colors within the native DSH layout: amber headings and commands, cyan paths and file reads, green edits/completed tasks, purple task tools and higher thinking levels, and red failed tools. Phase headers cycle through purple, cyan and amber; their status labels remain independent of that color. Model names use the pink accent of OMP's status line.
+
+The palette follows the concepts in OMP's built-in `dark.json` and `light.json` themes (locally inspected npm source 16.3.12), with adjusted shades for readable DSH cards. It follows DSH's selected light/dark appearance and respects forced-color mode. Native Markdown syntax highlighting and diff colors are retained. These are web presentation accents, not an import of terminal ANSI output or the user's custom OMP theme. Other agents keep their existing colors.
+
 ## Validation
 
 Rust and bridge regression tests cover title migration, Unicode bounds, manual rename, duplicate sends and restart persistence. React tests cover agent-specific tabs, draft retention, keyboard navigation, approval/stop controls, OMP phases and structured diff fallback. An isolated DSH web profile with synthetic conversations exercises the same client and Rust backend with native DSH components; no production conversations or provider credentials are used in that visual check.

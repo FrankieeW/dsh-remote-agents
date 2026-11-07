@@ -88,7 +88,7 @@ export function ChatSettings({ session, api, disabled, onConfigure, saveStatus }
     <button type="button" className="agent-chat-setting" aria-label="Model" aria-haspopup="dialog" aria-expanded={open === 'model'} disabled={disabled} onClick={() => toggle('model')}>
       <span>{modelLabel}</span><IconChevronDownOutlineRegular size={10} />
     </button>
-    <button type="button" className="agent-chat-setting" aria-label="Reasoning effort" aria-haspopup="dialog" aria-expanded={open === 'effort'} disabled={disabled} onClick={() => toggle('effort')}>
+    <button type="button" className="agent-chat-setting" data-effort={effortLabel.toLowerCase()} aria-label="Reasoning effort" aria-haspopup="dialog" aria-expanded={open === 'effort'} disabled={disabled} onClick={() => toggle('effort')}>
       <IconSlidersTwoOutlineRegular size={14} /><span>{effortLabel}</span><IconChevronDownOutlineRegular size={10} />
     </button>
     {saveStatus && <span className="agent-settings-save" role="status">{saveStatus}</span>}

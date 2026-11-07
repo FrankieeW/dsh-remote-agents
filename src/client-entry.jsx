@@ -6,6 +6,7 @@ import { WorkspaceBrowser, NativeBackendChoice, NativeAgentIdentity } from "./cl
 import { createWorkspaceStore } from "./client/workspace-store.js";
 import css from "./client/fleet.css";
 import chatCss from "./client/chat.css";
+import ompThemeCss from "./client/omp-theme.css";
 import workspaceCss from "./client/workspace.css";
 import { CHANNEL, RPC_PREFIX } from "./rpc.js";
 
@@ -89,7 +90,7 @@ export function apply(ctx) {
   ctx.effect(() => {
     const style = document.createElement("style");
     style.dataset.plugin = PANEL;
-    style.textContent = css + "\n" + chatCss + "\n" + workspaceCss;
+    style.textContent = css + "\n" + chatCss + "\n" + workspaceCss + "\n" + ompThemeCss;
     document.head.appendChild(style);
     return () => style.remove();
   });

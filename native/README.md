@@ -1,6 +1,6 @@
 # Rust backend
 
-This development branch (`0.5.0-alpha.1`) replaces the JavaScript business backend with a Rust sidecar. The public 0.4.1 release remains unchanged until a new release is explicitly published.
+This development branch (`0.5.0-alpha.2`) replaces the JavaScript business backend with a Rust sidecar. The public 0.4.1 release remains unchanged until a new release is explicitly published.
 
 ## Boundary
 

@@ -1,0 +1,78 @@
+/* OMP semantic accents, adapted to DSH's surfaces. Never tint other agents.
+   Inspired by OMP's mdHeading, mdCode, statusLinePath and thinking* colors.
+   Light text accents are darkened for readable contrast on DSH's white cards. */
+.agent-chat[data-agent="omp"] {
+  --omp-amber: #936000;
+  --omp-cyan: #08778a;
+  --omp-blue: #326ab4;
+  --omp-purple: #8153ac;
+  --omp-green: #347647;
+  --omp-red: #b83844;
+  --omp-pink: #a44680;
+}
+body[data-ds-dark-theme] .agent-chat[data-agent="omp"] {
+  --omp-amber: #febc38;
+  --omp-cyan: #68cddd;
+  --omp-blue: #78b4fa;
+  --omp-purple: #c5a0ef;
+  --omp-green: #89d281;
+  --omp-red: #ff7d89;
+  --omp-pink: #e5a1cc;
+}
+
+/* Keep the native layout; use color to distinguish views and recorded activity. */
+.agent-chat[data-agent="omp"] .agent-view-tabs [data-view="chat"] { --omp-view: var(--omp-amber); }
+.agent-chat[data-agent="omp"] .agent-view-tabs [data-view="tasks"] { --omp-view: var(--omp-purple); }
+.agent-chat[data-agent="omp"] .agent-view-tabs [data-view="tools"] { --omp-view: var(--omp-cyan); }
+.agent-chat[data-agent="omp"] .agent-view-tabs [aria-selected="true"] {
+  color: var(--omp-view);
+  border-bottom-color: var(--omp-view);
+  background: color-mix(in srgb, var(--omp-view) 6%, transparent);
+}
+.agent-chat[data-agent="omp"] .agent-view-tabs [aria-selected="true"] .agent-view-count { color: inherit; }
+.agent-chat[data-agent="omp"] .agent-chat-crumb:not(.is-current) { color: var(--omp-cyan); }
+.agent-chat[data-agent="omp"] .agent-chat-composer-agent { color: var(--omp-amber); }
+.agent-chat[data-agent="omp"] .agent-chat-setting[aria-label="Model"] { color: var(--omp-pink); }
+.agent-chat[data-agent="omp"] .agent-chat-setting[data-effort="low"] { color: var(--omp-blue); }
+.agent-chat[data-agent="omp"] .agent-chat-setting[data-effort="medium"] { color: var(--omp-cyan); }
+.agent-chat[data-agent="omp"] .agent-chat-setting:is([data-effort="high"], [data-effort="xhigh"], [data-effort="max"]) { color: var(--omp-purple); }
+
+.agent-chat[data-agent="omp"] .agent-chat-tool { --omp-tool: var(--omp-blue); }
+.agent-chat[data-agent="omp"] :is(.agent-tool-kind-read, .agent-tool-kind-search, .agent-tool-kind-fetch, .agent-tool-kind-websearch) { --omp-tool: var(--omp-cyan); }
+.agent-chat[data-agent="omp"] :is(.agent-tool-kind-edit, .agent-tool-kind-write) { --omp-tool: var(--omp-green); }
+.agent-chat[data-agent="omp"] .agent-tool-kind-terminal { --omp-tool: var(--omp-amber); }
+.agent-chat[data-agent="omp"] :is(.agent-tool-kind-todo, .agent-tool-kind-task) { --omp-tool: var(--omp-purple); }
+.agent-chat[data-agent="omp"] .agent-tool-status-error { --omp-tool: var(--omp-red); }
+.agent-chat[data-agent="omp"] .agent-chat-tool :is(.agent-chat-tool-title, .agent-chat-tool-icon) { color: var(--omp-tool); }
+.agent-chat-tool-icon { display: inline-flex; align-items: center; }
+.agent-chat[data-agent="omp"] .agent-chat-tool-body {
+  padding-inline-start: 12px;
+  border-inline-start: 2px solid color-mix(in srgb, var(--omp-tool) 45%, transparent);
+}
+.agent-chat[data-agent="omp"] .agent-tool-status-running .agent-chat-tool-row {
+  background: color-mix(in srgb, var(--omp-amber) 7%, transparent);
+}
+.agent-chat[data-agent="omp"] .agent-tool-status-error :is(.agent-chat-tool-summary, .agent-chat-tool-flag) { color: var(--omp-red); }
+
+/* Phase and state are independent: phases have accents; status keeps its label/icon. */
+.agent-chat[data-agent="omp"] :is(.agent-chat-todo-title, .agent-chat-todo-lead) { color: var(--omp-purple); }
+.agent-chat[data-agent="omp"] .agent-chat-todo-phase { --omp-phase: var(--omp-purple); color: var(--omp-phase); border-inline-start: 3px solid var(--omp-phase); padding-inline-start: 8px; }
+.agent-chat[data-agent="omp"] .agent-chat-todo-phase[data-phase-tone="1"] { --omp-phase: var(--omp-cyan); }
+.agent-chat[data-agent="omp"] .agent-chat-todo-phase[data-phase-tone="2"] { --omp-phase: var(--omp-amber); }
+.agent-chat[data-agent="omp"] .agent-chat-todo-item[data-status="completed"] .agent-chat-todo-content { color: var(--omp-green); }
+.agent-chat[data-agent="omp"] .agent-chat-todo-item[data-status="in_progress"] .agent-chat-todo-content { color: var(--omp-amber); font-weight: 500; }
+.agent-chat[data-agent="omp"] .agent-detail-view[data-view="tasks"] > header { color: var(--omp-purple); }
+.agent-chat[data-agent="omp"] .agent-detail-view[data-view="tools"] > header { color: var(--omp-cyan); }
+
+/* Native Markdown and code highlighting remain responsible for structure and syntax. */
+.agent-chat[data-agent="omp"] .agent-chat-markdown :is(h1, h2, h3, h4, h5, h6) { color: var(--omp-amber); }
+.agent-chat[data-agent="omp"] .agent-chat-markdown a { color: var(--omp-blue); }
+.agent-chat[data-agent="omp"] .agent-chat-markdown :not(pre) > code { color: var(--omp-purple); }
+.agent-chat[data-agent="omp"] .agent-chat-markdown li::marker { color: var(--omp-amber); }
+
+@media (forced-colors: active) {
+  .agent-chat[data-agent="omp"], body[data-ds-dark-theme] .agent-chat[data-agent="omp"] {
+    --omp-amber: CanvasText; --omp-cyan: CanvasText; --omp-blue: LinkText;
+    --omp-purple: CanvasText; --omp-green: CanvasText; --omp-red: CanvasText; --omp-pink: CanvasText;
+  }
+}

@@ -74,8 +74,8 @@ function ToolRow({ tool, cwd, defaultOpen = false }) {
       <span className={`agent-chat-tool-summary${failed ? " is-error" : ""}`}><TextShimmer active={running}>{view.summary}</TextShimmer></span></>}
     {failed && <span className="agent-chat-tool-flag">Failed</span>}
   </>;
-  return <DisclosureRow className="agent-chat-tool" rowClassName="agent-chat-tool-row" titleClassName="agent-chat-tool-title"
-    icon={<Icon size={14} />} title={view.title} running={running} open={open && expandable} expandable={expandable}
+  return <DisclosureRow className={`agent-chat-tool agent-tool-kind-${view.kind} agent-tool-status-${failed ? 'error' : running ? 'running' : 'idle'}`} rowClassName="agent-chat-tool-row" titleClassName="agent-chat-tool-title"
+    icon={<span className="agent-chat-tool-icon"><Icon size={14} /></span>} title={view.title} running={running} open={open && expandable} expandable={expandable}
     expandOnRowClick keepContentWhenOpen onToggle={() => setOpen((value) => !value)} collapsedContent={summary}>
     <div className="agent-chat-tool-body">
       <ToolBody view={view} running={running} failed={failed} cwd={cwd} />

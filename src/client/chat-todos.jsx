@@ -6,9 +6,10 @@ const STATE = Object.freeze({ completed: "done", in_progress: "ongoing", pending
 const LABEL = Object.freeze({ completed: "Completed", in_progress: "In progress", pending: "Pending" });
 
 export function TodoList({ todos }) {
+  let phaseIndex = -1;
   return <ul className="agent-chat-todo-list">
     {todos.map((item, index) => <Fragment key={`${index}:${item.content}`}>
-      {item.phase && item.phase !== todos[index - 1]?.phase && <li className="agent-chat-todo-phase">{item.phase}</li>}
+      {item.phase && item.phase !== todos[index - 1]?.phase && <li className="agent-chat-todo-phase" data-phase-tone={++phaseIndex % 3}>{item.phase}</li>}
       <li className="agent-chat-todo-item" data-status={item.status}>
       <span className="agent-chat-todo-glyph" role="img" aria-label={LABEL[item.status]}><StateDot state={STATE[item.status]} /></span>
       <span className="agent-chat-todo-content">{item.content}</span>
