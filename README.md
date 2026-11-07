@@ -4,7 +4,7 @@ Unified DSH workspaces for **Claude Code, Codex and OMP**, with local and SSH co
 
 Unofficial community plugin, independently developed and maintained; not affiliated with DeepSeek. User messages and provider output are never translated or rewritten.
 
-> **Rust backend (`0.5.0-alpha.5`).** `main` carries the Rust sidecar implementation. The stable npm `latest` channel is still the legacy JavaScript 0.4.1 release, and this alpha is distributed through the GitHub pre-release; the legacy JavaScript implementation (≤0.4.1) is frozen on the [`legacy-js`](https://github.com/FrankieeW/dsh-remote-agents/tree/legacy-js) branch. See [native architecture and builds](native/README.md).
+> **Rust backend (`0.5.0-alpha.5`).** `main` carries the Rust sidecar implementation. It is published to npm under the `next` dist-tag (`dsh-remote-agents@next`) and as a GitHub pre-release, while `latest` remains the frozen legacy JavaScript 0.4.1 release. The legacy JavaScript implementation (≤0.4.1) is preserved on the [`legacy-js`](https://github.com/FrankieeW/dsh-remote-agents/tree/legacy-js) branch. See [native architecture and builds](native/README.md).
 
 ### In the Rust build
 
@@ -41,7 +41,13 @@ dsh plugin --profile web add dsh-remote-agents@latest
 
 For the desktop app, install into its existing profile through its plugin manager; the command above does not update the desktop profile.
 
-`latest` still resolves to the frozen legacy JavaScript release. The Rust implementation on `main` is an alpha distributed through the [GitHub pre-release](https://github.com/FrankieeW/dsh-remote-agents/releases/tag/v0.5.0-alpha.5); see [Build and install](#build-and-install).
+`latest` still resolves to the frozen legacy JavaScript release. The Rust implementation on `main` is published as an alpha under the **`next`** dist-tag, and the same artifact is attached to the [GitHub pre-release](https://github.com/FrankieeW/dsh-remote-agents/releases/tag/v0.5.0-alpha.5):
+
+```sh
+dsh plugin --profile web add dsh-remote-agents@next
+```
+
+npm verifies that build with a signed provenance attestation from this repository's release workflow. See also [Build and install](#build-and-install).
 
 ## Legacy JavaScript version
 
@@ -126,7 +132,7 @@ dsh plugin --profile web add /absolute/path/dsh-remote-agents-0.5.0-alpha.5.tgz
 
 For the desktop application, use its plugin management entry rather than installing into an unrelated `web` profile. Restart the desktop application after the update; no automatic HMR is promised without a matching `dev:web` watcher.
 
-Install the development **0.5.0-alpha.5** tarball only in a separate test profile until the Rust migration has been reviewed. Repacking an older tarball at its existing installed path can retain pnpm's old file integrity/cache; a new version and filename avoid that ambiguity. Do not expect `dsh-remote-agents@latest` to resolve to this alpha; `latest` remains 0.4.1, and an npm pre-release of this line uses the `next` dist-tag.
+Install the **0.5.0-alpha.5** build only in a separate test profile until the Rust migration has been reviewed. It is available as `dsh-remote-agents@next`, or from the tarball attached to the GitHub pre-release. Repacking an older tarball at its existing installed path can retain pnpm's old file integrity/cache; a new version and filename avoid that ambiguity. Do not expect `dsh-remote-agents@latest` to resolve to this alpha; `latest` remains 0.4.1.
 
 The historical [v0.2.0 release](https://github.com/FrankieeW/dsh-remote-agents/releases/tag/v0.2.0) does **not** include unified chat. Building this Rust revision does not replace the published 0.4.1 release or the running desktop installation.
 
