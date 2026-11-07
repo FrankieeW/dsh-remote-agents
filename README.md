@@ -4,7 +4,7 @@ Unified DSH workspaces for **Claude Code, Codex and OMP**, with local and SSH co
 
 Unofficial community plugin, independently developed and maintained; not affiliated with DeepSeek. User messages and provider output are never translated or rewritten.
 
-> **Development branch: Rust backend (`0.5.0-alpha.5`).** The stable npm `latest` channel is still 0.4.1; this alpha ships only as a GitHub pre-release and as an npm pre-release under the `next` dist-tag. This branch moves backend operations to a Rust sidecar while preserving the DSH/React interface and existing state files. See [native architecture and builds](native/README.md).
+> **Development branch: Rust backend (`0.5.0-alpha.5`).** The stable npm `latest` channel remains 0.4.1 and does not include this alpha; the GitHub pre-release is its distribution channel. This branch moves backend operations to a Rust sidecar while preserving the DSH/React interface and existing state files. See [native architecture and builds](native/README.md).
 
 ### In this development build
 
@@ -120,7 +120,7 @@ dsh plugin --profile web add /absolute/path/dsh-remote-agents-0.5.0-alpha.5.tgz
 
 For the desktop application, use its plugin management entry rather than installing into an unrelated `web` profile. Restart the desktop application after the update; no automatic HMR is promised without a matching `dev:web` watcher.
 
-Install the development **0.5.0-alpha.5** tarball only in a separate test profile until the Rust migration has been reviewed. Repacking an older tarball at its existing installed path can retain pnpm's old file integrity/cache; a new version and filename avoid that ambiguity. The same build is published to npm as `dsh-remote-agents@next`; `dsh-remote-agents@latest` remains 0.4.1 and is unaffected.
+Install the development **0.5.0-alpha.5** tarball only in a separate test profile until the Rust migration has been reviewed. Repacking an older tarball at its existing installed path can retain pnpm's old file integrity/cache; a new version and filename avoid that ambiguity. Do not expect `dsh-remote-agents@latest` to resolve to this alpha; `latest` remains 0.4.1, and an npm pre-release of this line uses the `next` dist-tag.
 
 The historical [v0.2.0 release](https://github.com/FrankieeW/dsh-remote-agents/releases/tag/v0.2.0) does **not** include unified chat. Building this Rust revision does not replace the published 0.4.1 release or the running desktop installation.
 
