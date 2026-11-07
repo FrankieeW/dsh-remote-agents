@@ -4,9 +4,9 @@ Unified DSH workspaces for **Claude Code, Codex and OMP**, with local and SSH co
 
 Unofficial community plugin, independently developed and maintained; not affiliated with DeepSeek. User messages and provider output are never translated or rewritten.
 
-> **Development branch: Rust backend (`0.5.0-alpha.5`).** The stable npm `latest` channel remains 0.4.1 and does not include this alpha; the GitHub pre-release is its distribution channel. This branch moves backend operations to a Rust sidecar while preserving the DSH/React interface and existing state files. See [native architecture and builds](native/README.md).
+> **Rust backend (`0.5.0-alpha.5`).** `main` carries the Rust sidecar implementation. The stable npm `latest` channel is still the legacy JavaScript 0.4.1 release, and this alpha is distributed through the GitHub pre-release; the legacy JavaScript implementation (≤0.4.1) is frozen on the [`legacy-js`](https://github.com/FrankieeW/dsh-remote-agents/tree/legacy-js) branch. See [native architecture and builds](native/README.md).
 
-### In this development build
+### In the Rust build
 
 - Rust-owned `/` commands in Claude Code, Codex and OMP conversations: searchable keyboard completion, status/help, model/effort/permissions, rename/pin/archive, fresh conversations, interruption and Markdown/JSON export. Commands retain drafts on failure and never become model prompts. See [conversation commands](docs/unified-chat.md#conversation-commands-rust-development-build).
 - Per-conversation **Models** tab for OMP built-in/custom role assignments, project overrides, presets, provider connections and custom model definitions, scoped to that conversation's machine and workspace. Requires OMP 18.18.x for configuration management. See [OMP model configuration](docs/omp-model-configuration.md).
@@ -41,7 +41,13 @@ dsh plugin --profile web add dsh-remote-agents@latest
 
 For the desktop app, install into its existing profile through its plugin manager; the command above does not update the desktop profile.
 
-## What's new in 0.4.1
+`latest` still resolves to the frozen legacy JavaScript release. The Rust implementation on `main` is an alpha distributed through the [GitHub pre-release](https://github.com/FrankieeW/dsh-remote-agents/releases/tag/v0.5.0-alpha.5); see [Build and install](#build-and-install).
+
+## Legacy JavaScript version
+
+Versions up to **0.4.1** are the JavaScript-backed implementation. They remain available on npm (`dsh-remote-agents@latest`, or pinned as `dsh-remote-agents@0.4.1`) and their source is preserved, frozen, on the [`legacy-js` branch](https://github.com/FrankieeW/dsh-remote-agents/tree/legacy-js). That line receives no new features; `main` continues with the Rust implementation described below.
+
+## What's new in 0.4.1 (legacy JavaScript)
 
 - Fix an OMP conversation black screen caused by phased `todo` records (`op/list` input and `details.phases` output).
 - Show normalized OMP tasks and their current statuses, including result-only updates and empty lists. Unknown/truncated todo formats fall back to structured data.
@@ -103,7 +109,7 @@ The plugin uses owner-only exact Fetch routes on DSH's existing authenticated `/
 
 ## Build and install
 
-Building this development branch requires a stable Rust toolchain in addition to Node.js. Packaged installations use the bundled executable and do not compile Rust. A local build includes only the current platform; use the native distribution workflow for a package containing all four macOS/Linux architectures.
+Building the Rust implementation requires a stable Rust toolchain in addition to Node.js. Packaged installations use the bundled executable and do not compile Rust. A local build includes only the current platform; use the native distribution workflow for a package containing all four macOS/Linux architectures.
 
 ```sh
 npm ci --ignore-scripts

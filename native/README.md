@@ -1,6 +1,6 @@
 # Rust backend
 
-This development branch (`0.5.0-alpha.5`) replaces the JavaScript business backend with a Rust sidecar. The public 0.4.1 release remains unchanged until a new release is explicitly published.
+`main` (`0.5.0-alpha.5`) replaces the JavaScript business backend with a Rust sidecar. The frozen legacy JavaScript 0.4.1 release remains the npm `latest` channel until the Rust line is published as stable.
 
 ## Boundary
 

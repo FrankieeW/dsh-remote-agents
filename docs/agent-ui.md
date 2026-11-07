@@ -1,6 +1,6 @@
 # Agent views and automatic titles
 
-Available on `feat/rust-backend` starting with `0.5.0-alpha.1`. This document describes the development build, not the published 0.4.1 interface.
+Available on `main` starting with `0.5.0-alpha.1`. This document describes the Rust implementation, not the published 0.4.1 interface.
 
 ## Automatic conversation titles
 

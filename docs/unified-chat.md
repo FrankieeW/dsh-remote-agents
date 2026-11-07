@@ -40,7 +40,7 @@ The existing machine/project import and SSH terminal tools remain under **Machin
 
 ## Rust backend
 
-The development branch routes every backend operation to a bundled Rust process over bounded JSONL on stdio. DSH authentication and Fetch registration remain in the thin JavaScript host shim. Rust owns session/fleet storage, CLI discovery and configuration, SSH/tmux, provider event handling, approvals, imports, export/search and original OMP history. The Claude Node helper only invokes the official SDK and forwards its events and permission requests; decisions and normalization remain in Rust. No network listener or automatic JavaScript backend fallback is added. See [native architecture](../native/README.md).
+`main` routes every backend operation to a bundled Rust process over bounded JSONL on stdio. DSH authentication and Fetch registration remain in the thin JavaScript host shim. Rust owns session/fleet storage, CLI discovery and configuration, SSH/tmux, provider event handling, approvals, imports, export/search and original OMP history. The Claude Node helper only invokes the official SDK and forwards its events and permission requests; decisions and normalization remain in Rust. No network listener or automatic JavaScript backend fallback is added. See [native architecture](../native/README.md).
 
 ## Conversation commands (Rust development build)
 
