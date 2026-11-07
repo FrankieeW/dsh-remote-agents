@@ -177,6 +177,34 @@ impl Engine {
                     .options(&host, &session, p["refresh"] == true)
                     .await
             }
+            "ompConfigRead" | "ompConfigSave" => {
+                let host = self
+                    .host(
+                        p.get("machineId")
+                            .and_then(Value::as_str)
+                            .unwrap_or("local"),
+                    )
+                    .await?;
+                if method == "ompConfigRead" {
+                    crate::omp_config::snapshot(&host, &self.registry, &p).await
+                } else {
+                    let _gate = self.gate.lock().await;
+                    if let Some(chat) = self.chat.get() {
+                        let store = chat.lock().await;
+                        if store.live.keys().any(|id| {
+                            store.session(id).is_ok_and(|s| {
+                                s["provider"] == "omp" && s["machineId"] == host.machine["id"]
+                            })
+                        }) {
+                            return err(
+                                "BUSY",
+                                "Stop this machine's active OMP turns before saving shared configuration",
+                            );
+                        }
+                    }
+                    crate::omp_config::save(&host, &self.registry, &p).await
+                }
+            }
             "chatSend" => {
                 let _gate = self.gate.lock().await;
                 let chat = self.chat().await?;

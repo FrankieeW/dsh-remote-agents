@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    io::AsyncReadExt,
+    io::{AsyncReadExt, AsyncWriteExt},
     process::{Child, Command},
 };
 #[derive(Clone)]
@@ -123,23 +123,47 @@ impl Host {
         seconds: u64,
         max: usize,
     ) -> Result<String> {
+        self.run_with_input(file, args, cwd, seconds, max, None)
+            .await
+    }
+    pub async fn run_with_input(
+        &self,
+        file: &str,
+        args: &[String],
+        cwd: Option<&str>,
+        seconds: u64,
+        max: usize,
+        input: Option<Vec<u8>>,
+    ) -> Result<String> {
         let mut c = self.command(file, args, cwd)?;
         let mut child = c
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .stdin(Stdio::null())
+            .stdin(if input.is_some() {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
             .spawn()
             .map_err(|_| Error::new("SPAWN_FAILED", "Could not execute the selected command"))?;
         let pid = child.id();
         let mut out = child.stdout.take().unwrap().take((max + 1) as u64);
         let mut stderr = child.stderr.take().unwrap().take((max + 1) as u64);
+        let stdin = child.stdin.take();
         let output = tokio::time::timeout(Duration::from_secs(seconds), async {
             let mut o = vec![];
             let mut e = vec![];
-            let (a, b, status) = tokio::join!(
+            let (a, b, status, write) = tokio::join!(
                 out.read_to_end(&mut o),
                 stderr.read_to_end(&mut e),
-                child.wait()
+                child.wait(),
+                async move {
+                    if let (Some(data), Some(mut pipe)) = (input, stdin) {
+                        pipe.write_all(&data).await?;
+                        pipe.shutdown().await?;
+                    }
+                    Ok::<_, std::io::Error>(())
+                }
             );
             a?;
             b?;
@@ -153,6 +177,7 @@ impl Host {
                     "CLI command failed; check its installation, authentication and SSH connection",
                 );
             }
+            write?;
             String::from_utf8(o).map_err(|_| Error::new("INVALID_UTF8", "CLI output is not UTF-8"))
         })
         .await;

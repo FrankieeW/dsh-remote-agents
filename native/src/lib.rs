@@ -13,5 +13,6 @@ pub mod providers;
 pub mod runtimes;
 
 pub mod engine;
+pub mod omp_config;
 pub mod titles;
 pub mod tool_history;

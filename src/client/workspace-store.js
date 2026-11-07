@@ -42,6 +42,7 @@ export function createWorkspaceStore(api) {
       }
     },
     refresh() { void catalogPoller?.refresh(); void sessionPoller?.refresh(); },
+    configurationChanged() { publish({ configRevision: snapshot.configRevision + 1 }); store.refresh(); },
     search: query => api("chatSearch", { query }),
     async sessionAction(action, id, value) {
       const patch = action === 'rename' ? { name: value } : action === 'auto-name' ? { autoName: true } : action === 'pin' || action === 'unpin' ? { pinned: action === 'pin' } : { archived: action === 'archive' };

@@ -4,10 +4,11 @@ Unified DSH workspaces for **Claude Code, Codex and OMP**, with local and SSH co
 
 Unofficial community plugin, independently developed and maintained; not affiliated with DeepSeek. User messages and provider output are never translated or rewritten.
 
-> **Development branch: Rust backend (`0.5.0-alpha.3`).** The public stable npm version is still 0.4.1. This branch moves backend operations to a Rust sidecar while preserving the DSH/React interface and existing state files. It is not published or installed automatically. See [native architecture and builds](native/README.md).
+> **Development branch: Rust backend (`0.5.0-alpha.4`).** The public stable npm version is still 0.4.1. This branch moves backend operations to a Rust sidecar while preserving the DSH/React interface and existing state files. It is not published or installed automatically. See [native architecture and builds](native/README.md).
 
 ### In this development build
 
+- Dedicated **OMP models** page for built-in/custom role assignments, project overrides, presets, provider connections and custom model definitions. Requires OMP 18.18.x for configuration management. See [OMP model configuration](docs/omp-model-configuration.md).
 - Full tool archives for new local and SSH turns: browse 16-call pages, search complete inputs/results, read long values in UTF-8-safe pages and export a turn's full tools as JSONL. Older local OMP turns can recover from their original session files. See [tool history](docs/tool-history.md).
 - Automatic titles from the first prompt, with manual rename protection and an explicit **Use automatic title** action.
 - DSH-native conversation tabs tailored to each agent: Claude **Chat / Tools / To-dos**, Codex **Chat / Plan / Changes**, OMP **Chat / Tasks / Tools**.
@@ -113,12 +114,12 @@ npm pack
 Install the resulting package through the plugin manager of the **same profile as your running GUI**. For an explicitly selected `web` profile:
 
 ```sh
-dsh plugin --profile web add /absolute/path/dsh-remote-agents-0.5.0-alpha.3.tgz
+dsh plugin --profile web add /absolute/path/dsh-remote-agents-0.5.0-alpha.4.tgz
 ```
 
 For the desktop application, use its plugin management entry rather than installing into an unrelated `web` profile. Restart the desktop application after the update; no automatic HMR is promised without a matching `dev:web` watcher.
 
-Install the development **0.5.0-alpha.3** tarball only in a separate test profile until the Rust migration has been reviewed. Repacking an older tarball at its existing installed path can retain pnpm's old file integrity/cache; a new version and filename avoid that ambiguity.
+Install the development **0.5.0-alpha.4** tarball only in a separate test profile until the Rust migration has been reviewed. Repacking an older tarball at its existing installed path can retain pnpm's old file integrity/cache; a new version and filename avoid that ambiguity.
 
 The historical [v0.2.0 release](https://github.com/FrankieeW/dsh-remote-agents/releases/tag/v0.2.0) does **not** include unified chat. Building this Rust revision does not replace the published 0.4.1 release or the running desktop installation.
 

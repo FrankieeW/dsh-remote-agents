@@ -1,6 +1,6 @@
 # Rust backend
 
-This development branch (`0.5.0-alpha.3`) replaces the JavaScript business backend with a Rust sidecar. The public 0.4.1 release remains unchanged until a new release is explicitly published.
+This development branch (`0.5.0-alpha.4`) replaces the JavaScript business backend with a Rust sidecar. The public 0.4.1 release remains unchanged until a new release is explicitly published.
 
 ## Boundary
 
@@ -11,6 +11,7 @@ This development branch (`0.5.0-alpha.3`) replaces the JavaScript business backe
 - `hosts.rs`, `fleet.rs`, `herdr.rs`: registered SSH hosts, directory browsing, dedicated tmux socket ownership, and static preview/confirmed import. No default tmux sessions or unrelated native conversations are controlled.
 - `protocol.rs`, `runtimes.rs`, `providers.rs`: bounded framing, OMP v2 chunk assembly, native Codex app-server, Claude SDK events, lifecycle, model/configuration metadata and source-aware pinned updates.
 - `history.rs`: indexes native OMP JSONL parent links and byte offsets, then reads only the selected records. It validates session/cwd identity and ordered prompt hashes. Provider envelopes and credential identifiers are excluded from responses.
+- `omp_config.rs`: reads OMP role/model metadata, applies validated field-scoped YAML changes with conflict detection and backups, and keeps configured credentials out of browser responses. Local and SSH writes share the same validation.
 
 There is no added HTTP server, no native-code download at runtime, and no silent fallback to the old JavaScript backend. Existing `version: 1` fleet/conversation files and native session identities are retained. Restarted in-flight turns become interrupted and require an explicit new message. The retained UI preview limits remain explicit; native OMP history is available on demand.
 

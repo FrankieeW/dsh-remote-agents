@@ -1,12 +1,15 @@
 import React from "react";
 import packageInfo from "../package.json";
 import ChatWorkbench from "./client/ChatWorkbench.jsx";
+import OmpModelsPage from "./client/OmpModelsPage.jsx";
 import FleetPage from "./client/FleetPage.jsx";
 import { WorkspaceBrowser, NativeBackendChoice, NativeAgentIdentity } from "./client/WorkspaceIntegration.jsx";
 import { createWorkspaceStore } from "./client/workspace-store.js";
 import css from "./client/fleet.css";
 import chatCss from "./client/chat.css";
 import ompThemeCss from "./client/omp-theme.css";
+import ompModelsCss from "./client/omp-models.css";
+import AgentLogo from "./client/AgentLogo.jsx";
 import workspaceCss from "./client/workspace.css";
 import { CHANNEL, RPC_PREFIX } from "./rpc.js";
 
@@ -14,6 +17,7 @@ export const name = "remote-agents-client";
 export const inject = ["slots", "connection", "layout", "uiWorkspace", "workspaces", "sessions"];
 const PANEL = "remote-agents";
 const CHAT_PANEL = "remote-agents-chat";
+const OMP_MODELS_PANEL = "remote-agents-omp-models";
 
 function FleetIcon({ size = 20 }) {
   return (
@@ -40,7 +44,7 @@ export function apply(ctx) {
     const abort = () => controller.abort(signal?.reason);
     signal?.addEventListener("abort", abort, { once: true });
     if (signal?.aborted) abort();
-    const timer = setTimeout(() => controller.abort(new Error("Connection timed out. Retry after the host reconnects.")), 30000);
+    const timer = setTimeout(() => controller.abort(new Error("Connection timed out. Retry after the host reconnects.")), endpoint.startsWith('ompConfig') ? 45000 : 30000);
     try {
     const result = await ctx.connection.rpc.call(
       CHANNEL,
@@ -90,12 +94,13 @@ export function apply(ctx) {
   ctx.effect(() => {
     const style = document.createElement("style");
     style.dataset.plugin = PANEL;
-    style.textContent = css + "\n" + chatCss + "\n" + workspaceCss + "\n" + ompThemeCss;
+    style.textContent = css + "\n" + chatCss + "\n" + workspaceCss + "\n" + ompThemeCss + "\n" + ompModelsCss;
     document.head.appendChild(style);
     return () => style.remove();
   });
   ctx.slots.inject("main", function* () {
-    yield ctx.slots.register({ name: "main", key: CHAT_PANEL, inject: () => ({ api, store }) }, ChatWorkbench);
+    yield ctx.slots.register({ name: "main", key: CHAT_PANEL, inject: () => ({ api, store, onOpenOmpModels: () => { ctx.layout.beginNavigation(); ctx.layout.selectPanel(OMP_MODELS_PANEL); } }) }, ChatWorkbench);
+    yield ctx.slots.register({ name: "main", key: OMP_MODELS_PANEL, inject: () => ({ api, store, onConversation: () => ctx.layout.selectPanel(CHAT_PANEL) }) }, OmpModelsPage);
     yield ctx.slots.register({ name: "main", key: PANEL, inject: () => ({ api }) }, FleetPage);
   });
   ctx.slots.inject("sidebar.workspaces", () => ctx.slots.register({
@@ -123,4 +128,5 @@ export function apply(ctx) {
       FleetIcon,
     ),
   );
+  ctx.slots.inject("sidebar.panellist", () => ctx.slots.register({ name: 'sidebar.panellist', id: OMP_MODELS_PANEL, order: 21, label: 'OMP models' }, () => <AgentLogo provider="omp" size={20} decorative />));
 }

@@ -49,7 +49,7 @@ function Notice({ error, children, detail }) {
 }
 
 /** Content-only conversation; navigation and creation belong to the Workspace. */
-export default function ChatWorkbench({ api, store }) {
+export default function ChatWorkbench({ api, store, onOpenOmpModels }) {
   const { sessions, providers, selectedId, drafts, machines, configRevision } = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const { detail, setDetail, getError, epoch, refresh } = useSessionDetail(api, store, selectedId);
   const [busy, setBusy] = useState("");
@@ -199,7 +199,7 @@ export default function ChatWorkbench({ api, store }) {
         {session?.pendingApprovals.map((approval) => <ApprovalCard key={approval.id} approval={approval} provider={provider}
           cwd={session.cwd} busy={!!busy} onDecide={approve} />)}
         <Composer provider={provider} draft={draft} disabled={!session || closed} closed={closed} active={active} canSend={canSend}
-          configuration={session && runtime?.capabilities?.settings && <ChatSettings key={`${session.id}:${configRevision || 0}`} session={session} api={api} disabled={active || !!busy || closed} onConfigure={configure} saveStatus={settingsStatus} />}
+          configuration={session && runtime?.capabilities?.settings && <ChatSettings key={`${session.id}:${configRevision || 0}`} session={session} api={api} disabled={active || !!busy || closed} onConfigure={configure} saveStatus={settingsStatus} onOpenModels={onOpenOmpModels} />}
           sending={busy === "Send message"} stopDisabled={!!busy || closed} unavailable={unavailable}
           onDraft={(value) => setDrafts((previous) => ({ ...previous, [selectedId]: value }))}
           onSend={send} onStop={() => endSession("chatInterrupt", selectedId)} />

@@ -1,0 +1,25 @@
+{
+  "roles": [
+    {"id":"default","name":"Default","description":"Main conversations","kinds":["chat"]},
+    {"id":"smol","name":"Fast","description":"Quick, lightweight work","kinds":["chat"]},
+    {"id":"slow","name":"Thinking","description":"Complex reasoning","kinds":["chat"]},
+    {"id":"vision","name":"Vision","description":"Image understanding","kinds":["chat"]},
+    {"id":"plan","name":"Architect","description":"Planning and design","kinds":["chat"]},
+    {"id":"commit","name":"Commit","description":"Commit messages","kinds":["chat"]},
+    {"id":"tiny","name":"Tiny","description":"Small utility requests","kinds":["tiny","chat"]},
+    {"id":"memory","name":"Memory","description":"Memory processing","kinds":["tiny","chat"]},
+    {"id":"task","name":"Subtask","description":"Delegated tasks","kinds":["chat"]},
+    {"id":"advisor","name":"Advisor","description":"Second opinions","kinds":["chat"]},
+    {"id":"widget","name":"Job widgets","description":"Background job summaries","kinds":["chat"]},
+    {"id":"image","name":"Image generation","description":"Generate images","kinds":["image"]},
+    {"id":"web","name":"Web search","description":"Search or web-capable models","kinds":["search","chat"]},
+    {"id":"speech","name":"Speech","description":"Text to speech","kinds":["tts"]},
+    {"id":"dictation","name":"Dictation","description":"Speech to text","kinds":["stt"]},
+    {"id":"judge","name":"Judge","description":"Evaluate candidates","kinds":["judge","tiny","chat"]}
+  ],
+  "providerApis":["openai-completions","openai-responses","openai-codex-responses","azure-openai-responses","anthropic-messages","bedrock-converse-stream","google-generative-ai","google-gemini-cli","google-vertex","openrouter-decisions","openai-decisions","workers-ai-systemone","typesafe"],
+  "runnerApis":{"openai-images":"image","openrouter-images":"image","xai-tts":"tts","openai-speech":"tts","openai-embeddings":"embedding","openrouter-rerank":"rerank","openrouter-video":"video","openai-transcriptions":"stt","typesafe":"judge","openrouter-decisions":"judge","openai-decisions":"judge","workers-ai-systemone":"judge"},
+  "efforts":["off","minimal","low","medium","high","xhigh","max","auto"],
+  "thinkingModes":["effort","budget","google-level","anthropic-adaptive","anthropic-budget-effort"],
+  "discoveryTypes":["ollama","llama.cpp","lm-studio","openai-models-list","proxy","litellm","apple-foundation-models"]
+}

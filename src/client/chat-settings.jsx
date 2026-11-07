@@ -5,7 +5,7 @@ import { EFFORTS, PERMISSIONS, DEFAULT_SETTINGS } from '../chat/settings.js';
 import { IconChevronDownOutlineRegular, IconShieldOutlineRegular, IconSlidersTwoOutlineRegular, Tooltip } from './native.js';
 
 /** Session overrides; the CLI remains authoritative about effective settings and model access. */
-export function ChatSettings({ session, api, disabled, onConfigure, saveStatus }) {
+export function ChatSettings({ session, api, disabled, onConfigure, saveStatus, onOpenModels }) {
   const profile = agentProfile(session.provider);
   const [open, setOpen] = useState(null);
   const [catalog, setCatalog] = useState(null);
@@ -96,6 +96,7 @@ export function ChatSettings({ session, api, disabled, onConfigure, saveStatus }
       <header><strong>{open === 'model' ? `${profile.name} model` : open === 'effort' ? profile.effortLabel || 'Reasoning effort' : profile.permissionLabel || 'Permissions'}</strong>
         <button type="button" disabled={loading} onClick={() => load(true)}>Refresh CLI</button></header>
       <p className="agent-chat-caption">This session only · Follow CLI uses its configuration</p>
+      {session.provider === 'omp' && onOpenModels && <button type="button" onClick={() => { setOpen(null); onOpenModels(); }}>Manage OMP roles and providers…</button>}
       {saveStatus && <p className="agent-chat-caption" role="status">{saveStatus}</p>}
       {Object.keys(effective).length > 0 && <p className="agent-chat-caption">Last turn used: {[effective.model, effective.effort, effective.permissions, effective.sandbox].filter(Boolean).join(" · ")}</p>}
       {open === "permissions" && inheritedPermissions && <p className="agent-chat-caption">CLI: {inheritedPermissions}</p>}
